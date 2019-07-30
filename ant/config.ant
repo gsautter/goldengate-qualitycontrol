@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+
+<!-- the project global configuration for the build system.
+ 
+ Please: be very careful when modifing this, as this file lives in GIT and you can easily break
+ other peoples system when commiting changes to this file. -->
+
+<project name="config">
+	
+	<!-- =================================================================== -->
+	<!-- DIRECTORY CONFIGURATION -->
+	
+	<!-- root directory of the common source tree -->
+	<property name="src.home" value="src" />
+	
+	<!-- directory that contains all libraries that are required in the .war -->
+	<property name="lib.home" value="lib" />
+	
+	<!-- directory that contains all libraries that are required in the .war -->
+	<property name="webLib.home" value="tomcatLib" />
+	
+	<!-- build directory that will contain all the .jars and what else is required for a .war -->
+	<property name="build.home" value="build" />
+	
+	<!-- build directory that contains all files to include in the .zips except for the .jars -->
+	<property name="file.home" value="files" />
+	
+	<!-- directory that contains packed archives, such as the .war -->
+	<property name="dist.home" value="dist" />
+	
+	
+	<!-- path to the .jar file that shall be created -->
+	<property name="jar.qcutils" value="${dist.home}/Plugins/Bin/QualityControlUtils.jar" />
+	
+	<!-- path to the .jar file that shall be created -->
+	<property name="jar.errorchecklists" value="${dist.home}/Plugins/DocumentErrorCheckListManager.jar" />
+	
+	<!-- path to the .jar file that shall be created -->
+	<property name="jar.ggi.qctool" value="${dist.home}/GgImagineQcTool.jar" />
+	
+	<!-- path to the .jar file that shall be created -->
+	<property name="jar.ggi.docerrors" value="${dist.home}/Plugins/ImageDocumentErrorManager.jar" />
+	
+	<!-- path to the .jar file that shall be created -->
+	<property name="jar.ggi.ime" value="${dist.home}/Components/GgServerIME.jar" />
+	
+	<!-- path to the .jar file that shall be created -->
+	<property name="jar.ggi.imeclt" value="${dist.home}/Plugins/ImeClient.jar" />
+	
+	<!-- path to the .jar file that shall be created -->
+	<property name="jar.ggi.qctool.folderdb" value="${dist.home}/Plugins/GgImagineQcToolFolderDataBase.jar" />
+	
+	<!-- path to the .jar file that shall be created -->
+	<property name="jar.ggi.qctool.imedb" value="${dist.home}/Plugins/GgImagineQcToolImeDataBase.jar" />
+</project>

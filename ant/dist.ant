@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+
+<!--
+	Does all the packing. That is, creates the files that live in dist
+-->
+
+<project name="dist">
+	<target name="toolpluginscomponents" depends="qcutilsjar,errorchecklistsjar,docerrorsjar,ggiqctoolfolderdbjar,ggiqctooljar" />
+	
+	<target name="check-gge" unless="gge.exists">
+		<condition property="gge.exists">
+			<available file="lib/GoldenGATE.jar"/>
+		</condition> 
+	</target>
+	
+	<target name="qcutilsjar" depends="check-gge" if="${gge.exists}">
+		<delete file="${jar.qcutils}" />
+		<jar destfile="${jar.qcutils}" manifest="${file.home}/MANIFEST.plugins.MF">
+			<fileset dir="${build.home}/classes">
+				<include name="**/goldenGate/qc/*.class" />
+				<include name="**/goldenGate/qc/imagine/GgImagineErrorManager.class" />
+				<include name="**/goldenGate/qc/imagine/GgImagineErrorManager$*.class" />
+			</fileset>
+			<fileset dir="${src.home}">
+				<include name="**/goldenGate/qc/*.java" />
+				<include name="**/goldenGate/qc/imagine/GgImagineErrorManager.java" />
+			</fileset>
+			<fileset dir="." includes="LICENSE.txt"/>
+		</jar>
+	</target>
+	
+	<target name="errorchecklistsjar" depends="check-gge" if="${gge.exists}">
+		<delete file="${jar.errorchecklists}" />
+		<jar destfile="${jar.errorchecklists}" manifest="${file.home}/MANIFEST.plugins.MF">
+			<fileset dir="${build.home}/classes">
+				<include name="**/goldenGate/qc/plugins/DocumentErrorCheckListManager.class" />
+				<include name="**/goldenGate/qc/plugins/DocumentErrorCheckListManager$*.class" />
+			</fileset>
+			<fileset dir="${src.home}">
+				<include name="**/goldenGate/qc/plugins/DocumentErrorCheckListManager.java" />
+			</fileset>
+			<fileset dir="." includes="LICENSE.txt"/>
+		</jar>
+	</target>
+	
+	
+	<target name="check-ggi" unless="ggi.exists" depends="check-gge" if="${gge.exists}">
+		<condition property="ggi.exists">
+			<available file="lib/GgImagine.jar"/>
+		</condition> 
+	</target>
+	
+	<target name="docerrorsjar" depends="check-ggi" if="${ggi.exists}">
+		<delete file="${jar.ggi.docerrors}" />
+		<jar destfile="${jar.ggi.docerrors}" manifest="${file.home}/MANIFEST.plugins.MF">
+			<fileset dir="${build.home}/classes">
+				<include name="**/goldenGate/qc/plugins/imagine/ImageDocumentErrorManager.class" />
+				<include name="**/goldenGate/qc/plugins/imagine/ImageDocumentErrorManager$*.class" />
+			</fileset>
+			<fileset dir="${src.home}">
+				<include name="**/goldenGate/qc/plugins/imagine/ImageDocumentErrorManager.java" />
+			</fileset>
+			<fileset dir="." includes="LICENSE.txt"/>
+		</jar>
+	</target>
+	
+	<target name="ggiqctooljar" depends="check-ggi" if="${ggi.exists}">
+		<delete file="${jar.ggi.qctool}" />
+		<jar destfile="${jar.ggi.qctool}" manifest="${file.home}/MANIFEST.imagine.MF">
+			<fileset dir="${build.home}/classes">
+				<include name="**/goldenGate/qc/DocumentErrorManager.class" />
+				<include name="**/goldenGate/qc/DocumentErrorManager$*.class" />
+				<include name="**/goldenGate/qc/imagine/*.class" />
+			</fileset>
+			<fileset dir="${src.home}">
+				<include name="**/goldenGate/qc/DocumentErrorManager.java" />
+				<include name="**/goldenGate/qc/imagine/*.java" />
+			</fileset>
+			<fileset dir="." includes="LICENSE.txt"/>
+		</jar>
+	</target>
+	
+	<target name="ggiqctoolfolderdbjar" depends="check-ggi" if="${ggi.exists}">
+		<delete file="${jar.ggi.qctool.folderdb}" />
+		<jar destfile="${jar.ggi.qctool.folderdb}" manifest="${file.home}/MANIFEST.plugins.MF">
+			<fileset dir="${build.home}/classes">
+				<include name="**/goldenGate/qc/plugins/imagine/FolderQcToolDataBaseProvider.class" />
+				<include name="**/goldenGate/qc/plugins/imagine/FolderQcToolDataBaseProvider$*.class" />
+			</fileset>
+			<fileset dir="${src.home}">
+				<include name="**/goldenGate/qc/plugins/imagine/FolderQcToolDataBaseProvider.java" />
+			</fileset>
+			<fileset dir="." includes="LICENSE.txt"/>
+		</jar>
+	</target>
+</project>
