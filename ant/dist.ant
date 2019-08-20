@@ -5,7 +5,7 @@
 -->
 
 <project name="dist">
-	<target name="toolpluginscomponents" depends="qcutilsjar,errorchecklistsjar,docerrorsjar,ggiqctoolfolderdbjar,ggiqctooljar" />
+	<target name="toolpluginscomponents" depends="qcutilsjar,errorchecklistsjar,docerrorsjar,errorexpjar,ggiqctoolfolderdbjar,ggiqctooljar" />
 	
 	<target name="check-gge" unless="gge.exists">
 		<condition property="gge.exists">
@@ -20,10 +20,13 @@
 				<include name="**/goldenGate/qc/*.class" />
 				<include name="**/goldenGate/qc/imagine/GgImagineErrorManager.class" />
 				<include name="**/goldenGate/qc/imagine/GgImagineErrorManager$*.class" />
+				<include name="**/goldenGate/qc/imagine/GgImagineQcToolDataBaseProvider.class" />
+				<include name="**/goldenGate/qc/imagine/GgImagineQcToolDataBaseProvider$*.class" />
 			</fileset>
 			<fileset dir="${src.home}">
 				<include name="**/goldenGate/qc/*.java" />
 				<include name="**/goldenGate/qc/imagine/GgImagineErrorManager.java" />
+				<include name="**/goldenGate/qc/imagine/GgImagineQcToolDataBaseProvider.java" />
 			</fileset>
 			<fileset dir="." includes="LICENSE.txt"/>
 		</jar>
@@ -59,6 +62,20 @@
 			</fileset>
 			<fileset dir="${src.home}">
 				<include name="**/goldenGate/qc/plugins/imagine/ImageDocumentErrorManager.java" />
+			</fileset>
+			<fileset dir="." includes="LICENSE.txt"/>
+		</jar>
+	</target>
+	
+	<target name="errorexpjar" depends="check-ggi" if="${ggi.exists}">
+		<delete file="${jar.ggi.errorexp}" />
+		<jar destfile="${jar.ggi.errorexp}" manifest="${file.home}/MANIFEST.plugins.MF">
+			<fileset dir="${build.home}/classes">
+				<include name="**/goldenGate/qc/plugins/imagine/ImageDocumentErrorProtocolExporter.class" />
+				<include name="**/goldenGate/qc/plugins/imagine/ImageDocumentErrorProtocolExporter$*.class" />
+			</fileset>
+			<fileset dir="${src.home}">
+				<include name="**/goldenGate/qc/plugins/imagine/ImageDocumentErrorProtocolExporter.java" />
 			</fileset>
 			<fileset dir="." includes="LICENSE.txt"/>
 		</jar>

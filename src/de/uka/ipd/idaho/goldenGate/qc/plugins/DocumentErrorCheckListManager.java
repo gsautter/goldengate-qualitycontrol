@@ -564,7 +564,7 @@ public class DocumentErrorCheckListManager extends AbstractResourceManager {
 						}
 					}
 					else if (this.errorCheck != null)
-						this.errorCheck.test = token.trim();
+						this.errorCheck.test = xml.unescape(token.trim());
 				}
 				public void close() throws IOException {}
 			});
@@ -1285,19 +1285,6 @@ public class DocumentErrorCheckListManager extends AbstractResourceManager {
 					this.checkList.setSelectedIndex(this.checkListModel.getSize()-1);
 				dirty = true;
 			}
-//			
-//			public void changedUpdate(DocumentEvent de) {
-//				//	attribute changes are not of interest for now
-//			}
-//			public void insertUpdate(DocumentEvent de) {
-//				this.updateTypeTab();
-//			}
-//			public void removeUpdate(DocumentEvent de) {
-//				this.updateTypeTab();
-//			}
-//			public void itemStateChanged(ItemEvent ie) {
-//				this.updateTypeTab();
-//			}
 			void updateTypeTab() {
 				int index = typeTabs.indexOfComponent(this);
 				if (index == -1)
@@ -1454,10 +1441,6 @@ public class DocumentErrorCheckListManager extends AbstractResourceManager {
 				}
 			}
 			private Annotation[] testPath(String gPath, String level) throws GPathException {
-				//	TODO_somehow observe normalization level
-				//	TODO_somehow make this whole sucker non-static
-				//	TODO_somehow put ImDocumentRoot config panel right with it
-				//	AND THEN, THIS STUFF COMES UP IN GGE MODE ONLY ANYWAY
 				QueriableAnnotation data = DocumentErrorCheckListManager.this.parent.getActiveDocument();
 				return ((data == null) ? null : GPath.evaluatePath(data, gPath, null));
 			}

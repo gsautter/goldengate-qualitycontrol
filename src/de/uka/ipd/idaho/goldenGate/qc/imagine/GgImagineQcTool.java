@@ -67,25 +67,24 @@ import javax.swing.JSplitPane;
 import javax.swing.UIManager;
 
 import de.uka.ipd.idaho.easyIO.settings.Settings;
+import de.uka.ipd.idaho.easyIO.utilities.ApplicationHttpsEnabler;
 import de.uka.ipd.idaho.gamta.util.DocumentErrorProtocol;
 import de.uka.ipd.idaho.gamta.util.DocumentErrorProtocol.DocumentError;
-import de.uka.ipd.idaho.gamta.util.DocumentErrorSummary;
 import de.uka.ipd.idaho.gamta.util.ProgressMonitor;
 import de.uka.ipd.idaho.gamta.util.constants.LiteratureConstants;
 import de.uka.ipd.idaho.gamta.util.swing.DialogFactory;
 import de.uka.ipd.idaho.gamta.util.swing.DocumentErrorProtocolDisplay;
 import de.uka.ipd.idaho.gamta.util.swing.DocumentListPanel;
 import de.uka.ipd.idaho.gamta.util.swing.ProgressMonitorDialog;
-import de.uka.ipd.idaho.gamta.util.transfer.DocumentList;
 import de.uka.ipd.idaho.gamta.util.transfer.DocumentListBuffer;
 import de.uka.ipd.idaho.goldenGate.GoldenGateConfiguration;
 import de.uka.ipd.idaho.goldenGate.GoldenGateConstants;
 import de.uka.ipd.idaho.goldenGate.configuration.AbstractConfiguration;
 import de.uka.ipd.idaho.goldenGate.configuration.FileConfiguration;
 import de.uka.ipd.idaho.goldenGate.configuration.UrlConfiguration;
-import de.uka.ipd.idaho.goldenGate.plugins.AbstractGoldenGatePlugin;
 import de.uka.ipd.idaho.goldenGate.plugins.GoldenGatePlugin;
 import de.uka.ipd.idaho.goldenGate.plugins.GoldenGatePluginDataProvider;
+import de.uka.ipd.idaho.goldenGate.qc.imagine.GgImagineQcToolDataBaseProvider.GgImagineQcToolDataBase;
 import de.uka.ipd.idaho.goldenGate.util.DialogPanel;
 import de.uka.ipd.idaho.im.ImDocument;
 import de.uka.ipd.idaho.im.imagine.GoldenGateImagine;
@@ -126,15 +125,11 @@ public class GgImagineQcTool implements GoldenGateImagineConstants, LiteratureCo
 	public static void main(String[] args) throws Exception {
 		
 		//	adjust basic parameters
-		String basePath = "./";
+		String basePath = ".";
 		String configPath = "GgImagineQcTool.cnfg";
 		String cachePath = null;
 		String logPath = null;
 		String logFileName = ("GgImagineQcTool." + LOG_TIMESTAMP_FORMATTER.format(new Date()) + ".log");
-//		String dataPath = null;
-//		String hostOrUrl = null;
-//		int port = -1;
-//		String auth = null;
 		Properties parameters = new Properties();
 		boolean printHelp = false;
 		
@@ -171,24 +166,22 @@ public class GgImagineQcTool implements GoldenGateImagineConstants, LiteratureCo
 			System.out.println("PATH:\tthe folder to run GoldenGATE Imagine QcTool in (defaults to the\r\n\tinstallation folder)");
 			System.out.println("CONF:\tthe (path and) name of the configuration file to run GoldenGATE\r\n\tImagine QC Tool with (defaults to 'GgImagineQcTool.cnfg' in the folder\r\n\tGoldenGATE Imagine QC Tool is running in)");
 			System.out.println("CACHE:\tthe root folder for all data caching folders (defaults to the path\r\n\tfolder, useful for directing caching to a RAM disc, etc.)");
-//			System.out.println("DATA:\tthe path to the data to process");
-//			System.out.println("\t- set to a file path to process a singe document");
-//			System.out.println("\t- set to a folder path to process all files in that folder");
-//			System.out.println("HOST:\tthe host name of the GoldenGATE Server providing the data to process:");
-//			System.out.println("\t- set to a plain host name to indicate host+port access");
-//			System.out.println("\t- set to a URL (starting with 'http://') to indicate HTTP access");
-//			System.out.println("PORT:\tthe port of the GoldenGATE Server to upload to (with host+port access)");
-//			System.out.println("AUTH:\tthe login data for the GoldenGATE Server to upload to (as 'user:pwd')");
 			System.out.println("HELP:\tprint this help text");
 			return;
 		}
 		
 		//	remember program base path
-		BASE_PATH = new File(basePath);
+		BASE_PATH = new File(basePath).getAbsoluteFile();
+		
+		//	enable HTTPS (just in case)
+		File certFolder = new File(BASE_PATH, "HttpsCerts");
+		certFolder.mkdirs();
+		ApplicationHttpsEnabler https = new ApplicationHttpsEnabler(certFolder, true, false);
+		https.init();
 		
 		//	load GoldenGATE Imagine specific settings
 		File configFile;
-		if (configPath.startsWith("/") || (configPath.indexOf(":\\") == 1) || (configPath.indexOf(":/") == -1))
+		if (configPath.startsWith("/") || (configPath.indexOf(":\\") != -1) || (configPath.indexOf(":/") != -1))
 			configFile = new File(configPath);
 		else configFile = new File(BASE_PATH, configPath);
 		Settings config = Settings.loadSettings(configFile);
@@ -213,9 +206,6 @@ public class GgImagineQcTool implements GoldenGateImagineConstants, LiteratureCo
 				cacheFolder = null;
 			else cacheFolder.mkdirs();
 		}
-		
-		//	remember program base path
-		BASE_PATH = new File(basePath);
 		
 		//	set look & feel
 		try {
@@ -314,14 +304,14 @@ public class GgImagineQcTool implements GoldenGateImagineConstants, LiteratureCo
 		}
 		
 		//	get data base providers
-		QcToolDataBaseProvider[] dataBaseProviders = qctConfiguration.getDataBaseProviders();
+		GgImagineQcToolDataBaseProvider[] dataBaseProviders = qctConfiguration.getDataBaseProviders();
 		if ((dataBaseProviders == null) || (dataBaseProviders.length == 0)) {
 			System.out.println("Cannot work without Data Base Provider, please check configuration " + qctConfiguration.getName());
 			System.exit(0);
 		}
 		
 		//	create base
-		QcToolDataBase db = null;
+		GgImagineQcToolDataBase db = null;
 		
 		//	try parameter base approach first
 		for (int p = 0; p < dataBaseProviders.length; p++) {
@@ -332,7 +322,7 @@ public class GgImagineQcTool implements GoldenGateImagineConstants, LiteratureCo
 		
 		//	prompt use if parameters don't cut it
 		if (db == null) {
-			QcToolDataBaseProvider useDbp;
+			GgImagineQcToolDataBaseProvider useDbp;
 			if (dataBaseProviders.length == 1)
 				useDbp = dataBaseProviders[0];
 			else {
@@ -371,7 +361,7 @@ public class GgImagineQcTool implements GoldenGateImagineConstants, LiteratureCo
 			}
 			System.exit(0);
 		}
-		final QcToolDataBase dataBase = db;
+		final GgImagineQcToolDataBase dataBase = db;
 		
 		//	load document list in separate thread
 		final DocumentListBuffer[] docList = {null};
@@ -430,7 +420,7 @@ public class GgImagineQcTool implements GoldenGateImagineConstants, LiteratureCo
 		private GoldenGateConfiguration config;
 		private GoldenGatePlugin[] plugins = null;
 		private GgImagineErrorManager errorManager;
-		private QcToolDataBaseProvider[] dataBaseProviders;
+		private GgImagineQcToolDataBaseProvider[] dataBaseProviders;
 		QcToolConfiguration(GoldenGateConfiguration config) {
 			super(config.getName());
 			this.config = config;
@@ -513,13 +503,13 @@ public class GgImagineQcTool implements GoldenGateImagineConstants, LiteratureCo
 				//	TODO filter anything else?
 				if (plugins[p] instanceof GgImagineErrorManager)
 					this.errorManager = ((GgImagineErrorManager) plugins[p]);
-				if (plugins[p] instanceof QcToolDataBaseProvider)
+				if (plugins[p] instanceof GgImagineQcToolDataBaseProvider)
 					dataBaseProviders.add(plugins[p]);
 				//	TODO need anything else?
 				pluginList.add(plugins[p]);
 			}
 			this.plugins = ((GoldenGatePlugin[]) pluginList.toArray(new GoldenGatePlugin[pluginList.size()]));
-			this.dataBaseProviders = ((QcToolDataBaseProvider[]) dataBaseProviders.toArray(new QcToolDataBaseProvider[dataBaseProviders.size()]));
+			this.dataBaseProviders = ((GgImagineQcToolDataBaseProvider[]) dataBaseProviders.toArray(new GgImagineQcToolDataBaseProvider[dataBaseProviders.size()]));
 			return this.plugins;
 		}
 		GgImagineErrorManager getErrorManager() {
@@ -527,7 +517,7 @@ public class GgImagineQcTool implements GoldenGateImagineConstants, LiteratureCo
 				this.getPlugins();
 			return this.errorManager;
 		}
-		QcToolDataBaseProvider[] getDataBaseProviders() {
+		GgImagineQcToolDataBaseProvider[] getDataBaseProviders() {
 			if (this.dataBaseProviders == null)
 				this.getPlugins();
 			return this.dataBaseProviders;
@@ -535,8 +525,8 @@ public class GgImagineQcTool implements GoldenGateImagineConstants, LiteratureCo
 	}
 	
 	private static class QcToolDbProviderTray {
-		final QcToolDataBaseProvider dbp;
-		 QcToolDbProviderTray(QcToolDataBaseProvider dbp) {
+		final GgImagineQcToolDataBaseProvider dbp;
+		 QcToolDbProviderTray(GgImagineQcToolDataBaseProvider dbp) {
 			this.dbp = dbp;
 		}
 		public String toString() {
@@ -554,7 +544,7 @@ public class GgImagineQcTool implements GoldenGateImagineConstants, LiteratureCo
 			ERROR_PANEL_WINDOW
 		};
 		
-		private QcToolDataBase dataBase;
+		private GgImagineQcToolDataBase dataBase;
 		
 		private GoldenGateImagine ggImagine;
 		private Settings ggiConfig;
@@ -571,7 +561,7 @@ public class GgImagineQcTool implements GoldenGateImagineConstants, LiteratureCo
 		
 		private JComboBox errorPanelPosition = new JComboBox(errorPanelPositions);
 		
-		QcToolUI(Settings config, QcToolDataBase dataBase, DocumentListBuffer docList, GoldenGateImagine ggImagine, Settings ggiConfig, GgImagineErrorManager errorMgrs) {
+		QcToolUI(Settings config, GgImagineQcToolDataBase dataBase, DocumentListBuffer docList, GoldenGateImagine ggImagine, Settings ggiConfig, GgImagineErrorManager errorMgrs) {
 			super("GoldenGATE Imagine QC Tool on " + dataBase.getDataSourceName());
 			this.dataBase = dataBase;
 			this.ggImagine = ggImagine;
@@ -733,6 +723,7 @@ public class GgImagineQcTool implements GoldenGateImagineConstants, LiteratureCo
 			try {
 				this.dataBase.closeDocument(docId, doc[0]);
 				this.ggImagine.notifyDocumentClosed(docId);
+				doc[0].dispose();
 			}
 			catch (IOException ioe) {
 				ioe.printStackTrace(System.out);
@@ -1026,7 +1017,7 @@ public class GgImagineQcTool implements GoldenGateImagineConstants, LiteratureCo
 				this.docList = docList;
 				this.setListFields(listFields);
 				this.setListFieldOrder(listFieldOrder);
-				this.documentListChanged(); // have to call this explicitly now that we have the title
+				this.refreshDocumentList(); // have to do refresh to make configured columns show
 			}
 			
 			protected void documentListChanged() {
@@ -1141,188 +1132,6 @@ public class GgImagineQcTool implements GoldenGateImagineConstants, LiteratureCo
 				}
 				
 				return ((menu.getComponentCount() == 0) ? null : menu);
-			}
-		}
-	}
-	
-	/**
-	 * Plug-in that creates a QC Tool Data Base from command line program
-	 * parameters or from user input.
-	 * 
-	 * @author sautter
-	 */
-	public static abstract class QcToolDataBaseProvider extends AbstractGoldenGatePlugin {
-		
-		/**
-		 * Provide the name of the data source backing the QcToolDataBase
-		 * returned from the <code>getDataBase()</code> method, for use in
-		 * the UI, specifically in selector prompts.
-		 * @return the name of the backing data source
-		 */
-		public abstract String getDataSourceName();
-		
-		/**
-		 * Provide descriptions for the command line program parameters used by
-		 * the data base provider, for use in UI. The returned array should be
-		 * at most 80 character for output in the console.
-		 * @return an array of parameter descriptions.
-		 */
-		public abstract String[] getParameterDescriptions();
-		
-		/**
-		 * Create a QcToolDataBase from command line program parameters. If the
-		 * required parameters are absent, this method should return null. A
-		 * null method argument indicates the provider should prompt the user
-		 * for its required parameters.
-		 * @param cacheFolder the cache folder for the data base to use
-		 * @param params the parameters to use
-		 * @return a QcToolDataBase
-		 */
-		public abstract QcToolDataBase getDataBase(File cacheFolder, Properties parameters) throws IOException;
-	}
-	
-	/**
-	 * The foundation through which the QC Tool does document IO.
-	 * 
-	 * @author sautter
-	 */
-	public static abstract class QcToolDataBase {
-		DocumentListBuffer docList = null;
-		File cacheFolder;
-		
-		/**
-		 * Constructor
-		 * @param cacheFolder the cache folder to use for storing temporary
-		 *        document entries
-		 */
-		protected QcToolDataBase(File cacheFolder) {
-			this.cacheFolder = cacheFolder;
-		}
-		
-		DocumentListBuffer getDocumentList(ProgressMonitor pm) throws IOException {
-			if (this.docList == null) {
-				DocumentList dl = this.loadDocumentList(pm);
-				pm.setInfo("Got document list, caching content ...");
-				this.docList = new DocumentListBuffer(dl, pm);
-			}
-			return this.docList;
-		}
-		
-		/**
-		 * Provide a name for the backing data source, for use in the UI.
-		 * @return a name for the backing data source
-		 */
-		protected abstract String getDataSourceName();
-		
-		/**
-		 * Load a list of the documents requiring QC checks from the backing
-		 * data source.
-		 * @param pm a progress monitor for observing the loading process
-		 * @return the document list
-		 * @throws IOException
-		 */
-		protected abstract DocumentList loadDocumentList(ProgressMonitor pm) throws IOException;
-		
-		/**
-		 * Indicate whether or not a field in the document list returned from
-		 * <code>loadDocumentList()</code> contains a UTC timestamp.
-		 * @param fieldName the name of the field in question
-		 * @return true if the field represents a UTC timestamp
-		 */
-		protected abstract boolean isUtcTimeField(String fieldName);
-		
-		/**
-		 * Contribute buttons to the UI. This method is meant for implementing
-		 * classes to provide additional functionality.
-		 * @return the buttons to add to a UI using this data base
-		 */
-		protected abstract JButton[] getButtons();
-		
-		/**
-		 * Provide a summary of the errors in a document.
-		 * @param docId the ID of the document in the backing data source
-		 * @return the error summary
-		 * @throws IOException
-		 */
-		protected abstract DocumentErrorSummary getErrorSummary(String docId) throws IOException;
-		
-		/**
-		 * Provide a the comprehensive protocol of the errors in a document.
-		 * @param docId the ID of the document in the backing data source
-		 * @param doc the document proper, if loaded before (may be null)
-		 * @return the error protocol
-		 * @throws IOException
-		 */
-		protected abstract ImDocumentErrorProtocol getErrorProtocol(String docId, ImDocument doc) throws IOException;
-		
-		/**
-		 * Check whether or not a given document is editable, base upon the
-		 * data available from a document list entry. This is a pre-check to
-		 * (likely more costly) calls to <code>loadDocument()</code>.
-		 * @param docData the document data to check for counter indications
-		 * @return true if the document described by the argument list entry is
-		 *        editable
-		 */
-		protected abstract boolean isDocumentEditable(StringTupel docData);
-		
-		/**
-		 * Load a document from the backing source for editing.
-		 * @param docId the ID of the document in the backing data source
-		 * @param pm a progress monitor for observing the loading process
-		 * @return the document with the argument ID
-		 * @throws IOException
-		 */
-		protected abstract ImDocument loadDocument(String docId, ProgressMonitor pm) throws IOException;
-		
-		/**
-		 * Save a document to the backing source after fixing errors.
-		 * @param docId the ID of the document in the backing data source
-		 * @param doc the document proper
-		 * @param pm a progress monitor for observing the saving process
-		 * @throws IOException
-		 */
-		protected abstract void saveDocument(String docId, ImDocument doc, ProgressMonitor pm) throws IOException;
-		
-		/**
-		 * Close a document in the backing source after done with it.
-		 * @param docId the ID of the document in the backing data source
-		 * @param doc the document proper
-		 * @throws IOException
-		 */
-		protected abstract void closeDocument(String docId, ImDocument doc) throws IOException;
-		
-		/**
-		 * Obtain (and potentially) create a cache folder for the entries of a
-		 * document. If the cache folder docsn't exist and <code>create</code>
-		 * is false, this method returns null.
-		 * @param docId the ID of the document in the backing data source
-		 * @param create create the cache folder if not existing?
-		 * @return the cache folder
-		 */
-		protected File getDocumentCacheFolder(String docId, boolean create) {
-			if (this.cacheFolder == null)
-				return null;
-			File docCacheFolder = new File(this.cacheFolder, docId);
-			if (create)
-				docCacheFolder.mkdirs();
-			return docCacheFolder;
-		}
-		
-		/**
-		 * Clean a cache folder after done working with it. This method word
-		 * recursively.
-		 * @param folder the cache folder to clean
-		 */
-		protected static void cleanCacheFolder(File folder) {
-			File[] folderContent = folder.listFiles();
-			for (int c = 0; c < folderContent.length; c++) try {
-				if (folderContent[c].isDirectory())
-					cleanCacheFolder(folderContent[c]);
-				else folderContent[c].delete();
-			}
-			catch (Throwable t) {
-				System.out.println("Error cleaning up cached file '" + folderContent[c].getAbsolutePath() + "': " + t.getMessage());
-				t.printStackTrace(System.out);
 			}
 		}
 	}

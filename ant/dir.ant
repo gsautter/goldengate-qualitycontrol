@@ -12,7 +12,6 @@
 		<mkdir dir="${build.home}" />
 		<mkdir dir="${build.home}/classes" />
 		<mkdir dir="${dist.home}" />
-		<mkdir dir="${dist.home}/Components" />
 		<mkdir dir="${dist.home}/Plugins" />
 		<mkdir dir="${dist.home}/Plugins/Bin" />
 	</target>

@@ -54,8 +54,7 @@ import de.uka.ipd.idaho.gamta.util.ProgressMonitor;
 import de.uka.ipd.idaho.gamta.util.constants.LiteratureConstants;
 import de.uka.ipd.idaho.gamta.util.transfer.DocumentList;
 import de.uka.ipd.idaho.gamta.util.transfer.DocumentListElement;
-import de.uka.ipd.idaho.goldenGate.qc.imagine.GgImagineQcTool.QcToolDataBase;
-import de.uka.ipd.idaho.goldenGate.qc.imagine.GgImagineQcTool.QcToolDataBaseProvider;
+import de.uka.ipd.idaho.goldenGate.qc.imagine.GgImagineQcToolDataBaseProvider;
 import de.uka.ipd.idaho.im.ImDocument;
 import de.uka.ipd.idaho.im.util.ImDocumentData;
 import de.uka.ipd.idaho.im.util.ImDocumentData.FolderImDocumentData;
@@ -70,7 +69,7 @@ import de.uka.ipd.idaho.stringUtils.csvHandler.StringTupel;
  * 
  * @author sautter
  */
-public class FolderQcToolDataBaseProvider extends QcToolDataBaseProvider implements LiteratureConstants {
+public class FolderQcToolDataBaseProvider extends GgImagineQcToolDataBaseProvider implements LiteratureConstants {
 	private JFileChooser fileChooser;
 	
 	/** zero-argument constructor for class loading */
@@ -93,7 +92,7 @@ public class FolderQcToolDataBaseProvider extends QcToolDataBaseProvider impleme
 		return pds;
 	}
 	
-	public QcToolDataBase getDataBase(File cacheFolder, Properties parameters) throws IOException {
+	public GgImagineQcToolDataBase getDataBase(File cacheFolder, Properties parameters) throws IOException {
 		
 		//	this is what we ultimately need
 		File dataPath;
@@ -150,7 +149,7 @@ public class FolderQcToolDataBaseProvider extends QcToolDataBaseProvider impleme
 		return new FolderQcToolDataBase(cacheFolder, dataPath);
 	}
 	
-	private static class FolderQcToolDataBase extends QcToolDataBase {
+	private static class FolderQcToolDataBase extends GgImagineQcToolDataBase {
 		private static final String LAST_MODIFIED_TIME = "lastModified";
 		private static final String[] documentListFieldNames = {
 			DOCUMENT_ID_ATTRIBUTE,

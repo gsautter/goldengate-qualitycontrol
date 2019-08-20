@@ -87,6 +87,7 @@ import de.uka.ipd.idaho.gamta.Annotation;
 import de.uka.ipd.idaho.gamta.Attributed;
 import de.uka.ipd.idaho.gamta.Gamta;
 import de.uka.ipd.idaho.gamta.QueriableAnnotation;
+import de.uka.ipd.idaho.gamta.Token;
 import de.uka.ipd.idaho.gamta.TokenSequenceUtils;
 import de.uka.ipd.idaho.gamta.util.DocumentErrorProtocol;
 import de.uka.ipd.idaho.gamta.util.DocumentErrorProtocol.DocumentError;
@@ -155,13 +156,13 @@ public class ImageDocumentErrorManager extends AbstractGoldenGateImaginePlugin i
 		ImSupplement source;
 		byte[] bytes = null;
 		ErrorProtocolSupplement(ImDocument doc, DocErrorProtocol idep, ImSupplement source) {
-			super(doc, "errorProtocol", "text/plain");
+			super(doc, ImDocumentErrorProtocol.errorProtocolSupplementName, "errorProtocol", "text/plain");
 			this.idep = idep;
 			this.source = source;
 		}
-		public String getId() {
-			return ImDocumentErrorProtocol.errorProtocolSupplementName;
-		}
+//		public String getId() {
+//			return ImDocumentErrorProtocol.errorProtocolSupplementName;
+//		}
 		public InputStream getInputStream() throws IOException {
 			
 			//	clear any cached input
@@ -494,7 +495,7 @@ public class ImageDocumentErrorManager extends AbstractGoldenGateImaginePlugin i
 		DocErrorProtocol idep = this.getErrorProtocolFor(doc);
 		
 		//	run all pending re-checks so protocol is up to date for approval
-		idep.runPendingReChecks(pm, true);
+		idep.runPendingReChecks(pm);
 		
 		//	no errors left, approve it all
 		if ((idep != null) && (idep.getErrorCount() == 0)) {
@@ -773,14 +774,23 @@ public class ImageDocumentErrorManager extends AbstractGoldenGateImaginePlugin i
 		ImDocumentRoot streamCheckDoc = null;
 		for (int c = 0; c < idecl.size(); c++) {
 			ImDocumentErrorCheck idec = idecl.getErrorCheck(c);
-			if ((category != null) && !category.equals(idec.category))
+			System.out.println(" - checking " + idec.category + "/" + idec.type + " " + idec.description);
+			if ((category != null) && !category.equals(idec.category)) {
+				System.out.println("   ==> wrong category, not " + category);
 				continue;
-			if ((type != null) && !type.equals(idec.type))
+			}
+			if ((type != null) && !type.equals(idec.type)) {
+				System.out.println("   ==> wrong type, not " + type);
 				continue;
-			if ((subjectTypes != null) && !idec.targets.containsAny(subjectTypes))
+			}
+			if ((subjectTypes != null) && !idec.targets.containsAny(subjectTypes)) {
+				System.out.println("   ==> wrong subject types " + subjectTypes + ", none in " + idec.targets);
 				continue;
-			if ((subjectAttributes != null) && !idec.targets.containsAny(subjectAttributes))
+			}
+			if ((subjectAttributes != null) && !idec.targets.containsAny(subjectAttributes)) {
+				System.out.println("   ==> wrong subject attributes " + subjectAttributes + ", none in " + idec.targets);
 				continue;
+			}
 			if (pm != null) {
 				pm.setStep(this.errorMetadataKeeper.getErrorCategoryLabel(idec.category));
 				pm.setInfo(this.errorMetadataKeeper.getErrorTypeLabel(idec.category, idec.type));
@@ -882,7 +892,14 @@ public class ImageDocumentErrorManager extends AbstractGoldenGateImaginePlugin i
 					}
 					else if (target.startsWith("token::")) {
 						this.targets.add(ImWord.WORD_ANNOTATION_TYPE);
+						this.targets.add("token");
 						this.targets.add("@" + ImWord.STRING_ATTRIBUTE);
+						this.targets.add("@" + ImWord.NEXT_RELATION_ATTRIBUTE);
+						this.targets.add("@" + ImWord.PREVIOUS_RELATION_ATTRIBUTE);
+						this.targets.add("@" + ImWord.NEXT_WORD_ATTRIBUTE);
+						this.targets.add("@" + ImWord.PREVIOUS_WORD_ATTRIBUTE);
+						this.targets.add("@" + ImWord.TEXT_STREAM_TYPE_ATTRIBUTE);
+						this.targets.add("@" + ImWord.FONT_SIZE_ATTRIBUTE);
 					}
 					else if (target.endsWith("::annotation")) {}
 					else {
@@ -918,8 +935,10 @@ public class ImageDocumentErrorManager extends AbstractGoldenGateImaginePlugin i
 				for (Matcher subjects = targetPattern.matcher(testString); subjects.find();) {
 					String subject = subjects.group();
 					System.out.println(" - " + subject);
-					if (subject.startsWith("token::"))
+					if (subject.startsWith("token::")) {
 						this.subjects.add(ImWord.WORD_ANNOTATION_TYPE);
+						this.subjects.add("token");
+					}
 					else if (subject.endsWith("::annotation")) {}
 					else if (subject.startsWith("attribute::")) {}
 					else {
@@ -933,10 +952,36 @@ public class ImageDocumentErrorManager extends AbstractGoldenGateImaginePlugin i
 		void checkDocument(ImDocumentRoot doc, Set subjectTypes, Set typeIndependentSubjectIds, ImDocumentErrorProtocol idep) {
 			QueriableAnnotation[] errors = GPath.evaluatePath(doc, this.test, null);
 			for (int e = 0; e < errors.length; e++) {
-				if ((subjectTypes != null) && !subjectTypes.contains(errors[e].getType()))
+				System.out.println("   - found " + errors[e].getType());
+				if ((subjectTypes != null) && !subjectTypes.contains(errors[e].getType())) {
+					System.out.println("   ==> wrong subject type, not in " + subjectTypes);
 					continue;
-				if ((typeIndependentSubjectIds != null) && !typeIndependentSubjectIds.contains(ImDocumentErrorProtocol.getTypeInternalErrorSubjectId(errors[e], doc)))
-					continue;
+				}
+				if (typeIndependentSubjectIds == null) {}
+				else {
+					String eSubjectId = ImDocumentErrorProtocol.getTypeInternalErrorSubjectId(errors[e], doc);
+					if (typeIndependentSubjectIds.contains(eSubjectId)) {}
+					else if (!Token.TOKEN_ANNOTATION_TYPE.equals(errors[e].getType())) {
+						System.out.println("   ==> wrong subject ID " + eSubjectId + ", not in " + typeIndependentSubjectIds);
+						continue;
+					}
+					Token token = doc.tokenAt(errors[e].getAbsoluteStartIndex());
+					ImWord firstWord = doc.firstWordOf(token);
+					ImWord lastWord = doc.lastWordOf(token);
+					boolean noWordIsSubject = true;
+					for (ImWord imw = firstWord; imw != null; imw = imw.getNextWord()) {
+						if (typeIndependentSubjectIds.contains(ImDocumentErrorProtocol.getTypeInternalErrorSubjectId(imw, doc))) {
+							noWordIsSubject = false;
+							break;
+						}
+						if (imw == lastWord)
+							break;
+					}
+					if (noWordIsSubject) {
+						System.out.println("   ==> wrong token subject ID range " + eSubjectId + ", no included word in " + typeIndependentSubjectIds);
+						continue;
+					}
+				}
 				idep.addError(this.sourceId, errors[e], doc, this.category, this.type, this.getErrorDescription(errors[e]), this.severity);
 			}
 		}
@@ -959,7 +1004,7 @@ public class ImageDocumentErrorManager extends AbstractGoldenGateImaginePlugin i
 	
 	public DocumentErrorProtocolDisplay getErrorProtocolDisplay(ImDocumentMarkupPanel idmp, ImDocumentErrorProtocol idep, ProgressMonitor pm) {
 		if (idep instanceof DocErrorProtocol)
-			((DocErrorProtocol) idep).runPendingReChecks(pm, true);
+			((DocErrorProtocol) idep).runPendingReChecks(pm);
 		this.idepDisplay = new ImDocumentErrorProtocolDisplay(null, idmp, idep);
 		this.idepDisplayExtension = new DisplayExtension[1];
 		this.idepDisplayExtension[0] = this.idepDisplay;
@@ -980,7 +1025,7 @@ public class ImageDocumentErrorManager extends AbstractGoldenGateImaginePlugin i
 			if (this.idepDisplay.dialog != null)
 				SwingUtilities.invokeLater(new Runnable() {
 					public void run() {
-						idepDisplay.dialog.setSize(500, 500);
+						idepDisplay.dialog.setSize(600, 750);
 						if (idepDisplay.dialog.isVisible())
 							idepDisplay.dialog.toFront();
 						else idepDisplay.dialog.setVisible(true);
@@ -990,7 +1035,7 @@ public class ImageDocumentErrorManager extends AbstractGoldenGateImaginePlugin i
 		}
 		
 		//	run all pending re-checks so protocol is up to date then display opens
-		idep.runPendingReChecks(pm, true);
+		idep.runPendingReChecks(pm);
 		
 		/* when calling from an IMT, we need to make sure error protocol opens
 		 * _after_ splash screen is closed (we want that dialog owned by main
@@ -1037,7 +1082,7 @@ public class ImageDocumentErrorManager extends AbstractGoldenGateImaginePlugin i
 		});
 	}
 	
-	private Dimension idepViewerSize = new Dimension(500, 500);
+	private Dimension idepViewerSize = new Dimension(600, 750);
 	private Point idepViewerPos = null;
 	private class ImDocumentErrorProtocolViewer extends DialogPanel {
 		private ImDocumentErrorProtocolDisplay errorPanel;
@@ -1086,11 +1131,12 @@ public class ImageDocumentErrorManager extends AbstractGoldenGateImaginePlugin i
 		private JSpinner errorOutlineThicknessSpinner;
 		private JButton errorHighlightColorButton = new JButton("Change Color");
 		private JCheckBox showErrorHighlights = new JCheckBox("Highlight Errors?", true);
+		private JCheckBox autoSelectNextError = new JCheckBox("Auto-Select Next?", true);
 		
-		private JButton removeErrorButton = new JButton("Remove Error");
-		private JButton falsePositiveButton = new JButton("False Positive");
-		private JButton removeErrorSubjectButton = new JButton("Remove Subject");
-		private JButton editSubjectAttributesButton = new JButton("Edit Attributes");
+		private JButton removeErrorButton = new JButton("<HTML>Remove Error</HTML>");
+		private JButton falsePositiveButton = new JButton("<HTML>False Positive<BR>or Data Error</HTML>");
+		private JButton removeErrorSubjectButton = new JButton("<HTML>Remove Subject</HTML>");
+		private JButton editSubjectAttributesButton = new JButton("<HTML>Edit Attributes</HTML>");
 		//	TODO add another button for custom configured likely actions
 		//	TODO create such mapping from error source (TODO establish that) to actions in the first place
 		//	TODO in the long haul, maybe even link errors to default actions (via source) and provide respective 'Correct' button
@@ -1141,6 +1187,11 @@ public class ImageDocumentErrorManager extends AbstractGoldenGateImaginePlugin i
 					imagineParent.notifyDisplayExtensionsModified(documentPanel);
 				}
 			});
+			this.autoSelectNextError.addItemListener(new ItemListener() {
+				public void itemStateChanged(ItemEvent ie) {
+					setAutoSelectNextError(autoSelectNextError.isSelected());
+				}
+			});
 			
 			//	add buttons with frequent resolution actions
 			this.removeErrorButton.setBorder(BorderFactory.createRaisedBevelBorder());
@@ -1172,14 +1223,20 @@ public class ImageDocumentErrorManager extends AbstractGoldenGateImaginePlugin i
 			JPanel highlightMarginPanel = new JPanel(new BorderLayout(), true);
 			highlightMarginPanel.add(new JLabel(" Protrude by "), BorderLayout.WEST);
 			highlightMarginPanel.add(this.errorHighlightMarginSpinner, BorderLayout.CENTER);
+			highlightMarginPanel.setToolTipText("The frame around the subject of the selected error will be this many pixels away from the error subject porper");
 			JPanel outlineThicknessPanel = new JPanel(new BorderLayout(), true);
 			outlineThicknessPanel.add(new JLabel(" Frame Weight "), BorderLayout.WEST);
 			outlineThicknessPanel.add(this.errorOutlineThicknessSpinner, BorderLayout.CENTER);
-			JPanel optionPanel = new JPanel(new GridLayout(0, 4), true);
+			outlineThicknessPanel.setToolTipText("The frame around the subject of the selected error will be this many pixels thick");
+			JPanel optionPanel = new JPanel(new GridLayout(0, 5), true);
+			this.errorHighlightColorButton.setToolTipText("Change the color of the frame around the selected error subject");
 			optionPanel.add(this.errorHighlightColorButton);
 			optionPanel.add(highlightMarginPanel);
 			optionPanel.add(outlineThicknessPanel);
+			this.showErrorHighlights.setToolTipText("Draw a frame around the subject of the selected error");
 			optionPanel.add(this.showErrorHighlights);
+			this.autoSelectNextError.setToolTipText("Automatically select next error when the selected error is resolved or otherwise removed?");
+			optionPanel.add(this.autoSelectNextError);
 			
 			//	finish re-check and remove-all buttons
 			this.reCheckAllButton.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createLineBorder(this.reCheckButton.getBackground(), 2), BorderFactory.createRaisedBevelBorder()));
@@ -1256,24 +1313,24 @@ public class ImageDocumentErrorManager extends AbstractGoldenGateImaginePlugin i
 				this.lastSelectedError = error;
 				return;
 			}
-			this.showErrorSubject((ImDocumentError) error);
 			this.adjustErrorSubjectActionButtons();
+			this.showErrorSubject((ImDocumentError) error);
 		}
 		protected void errorRemoved(DocumentError error, boolean falsePositive) {
 			if (falsePositive)
 				this.errorProtocol.markFalsePositive((ImDocumentError) error);
 			if (this.immediateUpdatesSuspended)
 				return;
-			this.showErrorSubject((ImDocumentError) null);
 			this.adjustErrorSubjectActionButtons();
+			this.showErrorSubject((ImDocumentError) null);
 		}
 		public void errorRemoved(DocumentError error) {
 			super.errorRemoved(error);
 			if (this.immediateUpdatesSuspended)
 				return;
+			this.adjustErrorSubjectActionButtons();
 			if (error == currentError)
 				this.showErrorSubject((ImDocumentError) null);
-			this.adjustErrorSubjectActionButtons();
 		}
 		public void dispose() {
 			if (this.errorProtocol instanceof DocErrorProtocol)
@@ -1944,7 +2001,7 @@ public class ImageDocumentErrorManager extends AbstractGoldenGateImaginePlugin i
 			return; // nothing to persist
 		if (pm != null)
 			pm.setInfo("Adding error protocol");
-		idep.runPendingReChecks(pm, true); // make sure error protocol is up to date when saving
+		idep.runPendingReChecks(pm); // make sure error protocol is up to date when saving
 		doc.addSupplement(new ErrorProtocolSupplement(doc, idep, null));
 		if (pm != null)
 			pm.setInfo("Loading error added");
@@ -2127,14 +2184,14 @@ public class ImageDocumentErrorManager extends AbstractGoldenGateImaginePlugin i
 		public void atomicActionFinishing(long id, ProgressMonitor pm) {
 			if (this.atomicActionID < 0)
 				return;
-			this.runPendingReChecks(pm, false); // update error protocol at end of atomic action
+			this.runPendingReChecks(pm); // update error protocol at end of atomic action
 		}
 		public void atomicActionFinished(long id, ProgressMonitor pm) {
 			this.atomicActionID = 0;
 			this.atomicActionTarget = null;
 		}
 		
-		void runPendingReChecks(ProgressMonitor pm, boolean isBulkReCheck) {
+		void runPendingReChecks(ProgressMonitor pm) {
 			
 			//	anything to re-check at all?
 			if (this.subjectsAdded.isEmpty() && this.subjectsRemoved.isEmpty() && this.subjectTypesChanged.isEmpty() && this.subjectAttributesChanged.isEmpty())
@@ -2332,7 +2389,7 @@ public class ImageDocumentErrorManager extends AbstractGoldenGateImaginePlugin i
 			if (idecl.hasReferentialChecks()) {
 				for (int c = 0; c < idecl.size(); c++)
 					this.removeErrorsBySource(idecl.getErrorCheck(c).sourceId);
-				System.out.println("Re-checking whole document");
+				System.out.println("Re-checking whole document (for referential checks)");
 				checkDocumentErrors(this.subject, null, idecl, idecl.subjects, null, null, pm);
 				return;
 			}
@@ -2343,6 +2400,7 @@ public class ImageDocumentErrorManager extends AbstractGoldenGateImaginePlugin i
 				//	get common context (if any)
 				//	TODO try and group regions by common context, and re-check individually (should be faster for multiple localized edits)
 				//	TODO switch to global re-check soon as more than quarter of document pages affected
+				//	TODO == best do this page by page !!!
 				ImRegion[] cRegions = null;
 				HashSet cSubjects = new HashSet();
 				for (Iterator sit = subjects.iterator(); sit.hasNext();) {
@@ -2351,7 +2409,22 @@ public class ImageDocumentErrorManager extends AbstractGoldenGateImaginePlugin i
 					if (scRegions == null)
 						continue;
 					cSubjects.add(subject);
-					cSubjects.addAll(Arrays.asList(scRegions));
+					for (int r = 0; r < scRegions.length; r++) {
+						if (idecl.subjects.contains(scRegions[r].getType()))
+							cSubjects.add(scRegions[r]);
+						else if (WORD_ANNOTATION_TYPE.equals(subject.getType())) {
+							if (PARAGRAPH_TYPE.equals(scRegions[r].getType()))
+								cSubjects.add(scRegions[r]);
+						}
+						else if (PARAGRAPH_TYPE.equals(subject.getType())) {
+							if (BLOCK_ANNOTATION_TYPE.equals(scRegions[r].getType()))
+								cSubjects.add(scRegions[r]);
+						}
+						else if (BLOCK_ANNOTATION_TYPE.equals(subject.getType())) {
+							if (COLUMN_ANNOTATION_TYPE.equals(scRegions[r].getType()))
+								cSubjects.add(scRegions[r]);
+						}
+					}
 					if (cRegions == null)
 						cRegions = scRegions;
 					else if ((cRegions[0].pageId == scRegions[0].pageId) && cRegions[0].getType().equals(scRegions[0].getType()) && cRegions[0].bounds.equals(scRegions[0].bounds)) {}
@@ -2371,18 +2444,22 @@ public class ImageDocumentErrorManager extends AbstractGoldenGateImaginePlugin i
 				if (cRegions == null) {
 					for (int c = 0; c < idecl.size(); c++)
 						this.removeErrorsBySource(idecl.getErrorCheck(c).sourceId);
-					System.out.println("Re-checking whole document");
+					System.out.println("Re-checking whole document (no context region)");
 					checkDocumentErrors(this.subject, null, idecl, idecl.subjects, null, null, pm);
 				}
 				
 				//	re-check only shared context
 				else {
 					
-					//	clean up errors by subject, and collect IDs
+					//	clean up errors by subject, and collect IDs and convex hull
 					HashSet cSubjectIDs = new HashSet();
+					BoundingBox cSubjectBox = null;
 					for (Iterator sit = cSubjects.iterator(); sit.hasNext();) {
 						ImRegion cSubject = ((ImRegion) sit.next());
 						cSubjectIDs.add(getTypeInternalErrorSubjectId(cSubject, this.subject));
+						if (cSubjectBox == null)
+							cSubjectBox = cSubject.bounds;
+						else cSubjectBox = cSubjectBox.union(cSubject.bounds);
 						DocumentError[] tisErrors = this.getErrorsForSubject(cSubject);
 						for (int e = 0; e < tisErrors.length; e++) {
 							if (idecl.sourceIDs.contains(tisErrors[e].source))
@@ -2390,9 +2467,21 @@ public class ImageDocumentErrorManager extends AbstractGoldenGateImaginePlugin i
 						}
 					}
 					
+					//	move context region as far inward as possible, as long as convex hull of error subjects contained
+					Arrays.sort(cRegions, new Comparator() {
+						public int compare(Object obj1, Object obj2) {
+							return (((ImRegion) obj2).bounds.getArea() - ((ImRegion) obj1).bounds.getArea());
+						}
+					});
+					ImRegion cRegion = cRegions[0];
+					for (int r = 1; r < cRegions.length; r++) {
+						if (cRegions[r].bounds.includes(cSubjectBox, false))
+							cRegion = cRegions[r];
+					}
+					
 					//	perform re-checks on context
-					System.out.println("Re-checking context region " + cRegions[0].getType() + " at " + cRegions[0].pageId + "." + cRegions[0].bounds);
-					checkDocumentErrors(this.subject, cRegions[0], idecl, idecl.subjects, cSubjectIDs, null, null);
+					System.out.println("Re-checking context region " + cRegion.getType() + " at " + cRegion.pageId + "." + cRegion.bounds + " containing " + cSubjectBox);
+					checkDocumentErrors(this.subject, cRegion, idecl, idecl.subjects, cSubjectIDs, null, null);
 				}
 			}
 			
@@ -2407,6 +2496,9 @@ public class ImageDocumentErrorManager extends AbstractGoldenGateImaginePlugin i
 				if (this.atomicActionTarget == null) {
 					//	TODO try and group annotations by common context, and re-check individually (should be faster for multiple localized edits)
 					//	TODO switch to global re-check soon as more than quarter of document pages affected
+					//	==> TODO try and generically identify top level annotations (subSections, treatments) ...
+					//	==> TODO ... include them in context (just like page structure above for regions) ...
+					//	==> TODO ... and group re-checks by them
 					for (Iterator sit = subjects.iterator(); sit.hasNext();) {
 						ImAnnotation subject = ((ImAnnotation) sit.next());
 						ImAnnotation[] scAnnots = this.getReCheckContext(subject, idecl);
@@ -2447,7 +2539,7 @@ public class ImageDocumentErrorManager extends AbstractGoldenGateImaginePlugin i
 				if (cAnnots == null) {
 					for (int c = 0; c < idecl.size(); c++)
 						this.removeErrorsBySource(idecl.getErrorCheck(c).sourceId);
-					System.out.println("Re-checking whole document");
+					System.out.println("Re-checking whole document (no context annotation)");
 					checkDocumentErrors(this.subject, null, idecl, idecl.subjects, null, null, pm);
 				}
 				
@@ -2476,7 +2568,7 @@ public class ImageDocumentErrorManager extends AbstractGoldenGateImaginePlugin i
 			else {
 				for (int c = 0; c < idecl.size(); c++)
 					this.removeErrorsBySource(idecl.getErrorCheck(c).sourceId);
-				System.out.println("Re-checking whole document");
+				System.out.println("Re-checking whole document (for document attributes)");
 				checkDocumentErrors(this.subject, null, idecl, idecl.subjects, null, null, pm);
 			}
 		}
@@ -2508,6 +2600,32 @@ public class ImageDocumentErrorManager extends AbstractGoldenGateImaginePlugin i
 				System.out.println("Re-checking errors for attribute " + attributeName + " change on " + object);
 				if (object instanceof ImWord) {
 					this.reCheckRegionContext(((ImWord) object), object.getType(), false, ("@" + attributeName));
+					if (ImWord.NEXT_WORD_ATTRIBUTE.equals(attributeName)) {
+						ImWord nextWord = ((ImWord) object).getNextWord();
+						if (nextWord != null)
+							this.reCheckRegionContext(nextWord, object.getType(), false, ("@" + ImWord.PREVIOUS_WORD_ATTRIBUTE));
+						ImWord oldNextWord = ((ImWord) oldValue);
+						if (oldNextWord != null)
+							this.reCheckRegionContext(oldNextWord, object.getType(), false, ("@" + ImWord.PREVIOUS_WORD_ATTRIBUTE));
+					}
+					else if (ImWord.NEXT_RELATION_ATTRIBUTE.equals(attributeName)) {
+						ImWord nextWord = ((ImWord) object).getNextWord();
+						if (nextWord != null)
+							this.reCheckRegionContext(nextWord, object.getType(), false, ("@" + ImWord.PREVIOUS_RELATION_ATTRIBUTE));
+					}
+					else if (ImWord.PREVIOUS_WORD_ATTRIBUTE.equals(attributeName)) {
+						ImWord prevWord = ((ImWord) object).getPreviousWord();
+						if (prevWord != null)
+							this.reCheckRegionContext(prevWord, object.getType(), false, ("@" + ImWord.NEXT_WORD_ATTRIBUTE));
+						ImWord oldPrevWord = ((ImWord) oldValue);
+						if (oldPrevWord != null)
+							this.reCheckRegionContext(oldPrevWord, object.getType(), false, ("@" + ImWord.NEXT_WORD_ATTRIBUTE));
+					}
+					else if (ImWord.PREVIOUS_RELATION_ATTRIBUTE.equals(attributeName)) {
+						ImWord prevWord = ((ImWord) object).getPreviousWord();
+						if (prevWord != null)
+							this.reCheckRegionContext(prevWord, object.getType(), false, ("@" + ImWord.NEXT_RELATION_ATTRIBUTE));
+					}
 				}
 				else if (object instanceof ImAnnotation) {
 					this.reCheckAnnotationContext(((ImAnnotation) object), object.getType(), false, ("@" + attributeName));
@@ -2541,8 +2659,38 @@ public class ImageDocumentErrorManager extends AbstractGoldenGateImaginePlugin i
 				}
 			}
 			
-			//	remember for bulk re-check
-			else this.subjectAttributesChanged.add(object);
+			//	remember for bulk re-check (also predecessor or successor of words on respective changes)
+			else {
+				this.subjectAttributesChanged.add(object);
+				if (object instanceof ImWord) {
+					if (ImWord.NEXT_WORD_ATTRIBUTE.equals(attributeName)) {
+						ImWord nextWord = ((ImWord) object).getNextWord();
+						if (nextWord != null)
+							this.subjectAttributesChanged.add(nextWord);
+						ImWord oldNextWord = ((ImWord) oldValue);
+						if (oldNextWord != null)
+							this.subjectAttributesChanged.add(oldNextWord);
+					}
+					else if (ImWord.NEXT_RELATION_ATTRIBUTE.equals(attributeName)) {
+						ImWord nextWord = ((ImWord) object).getNextWord();
+						if (nextWord != null)
+							this.subjectAttributesChanged.add(nextWord);
+					}
+					else if (ImWord.PREVIOUS_WORD_ATTRIBUTE.equals(attributeName)) {
+						ImWord prevWord = ((ImWord) object).getPreviousWord();
+						if (prevWord != null)
+							this.subjectAttributesChanged.add(prevWord);
+						ImWord oldPrevWord = ((ImWord) oldValue);
+						if (oldPrevWord != null)
+							this.subjectAttributesChanged.add(oldPrevWord);
+					}
+					else if (ImWord.PREVIOUS_RELATION_ATTRIBUTE.equals(attributeName)) {
+						ImWord prevWord = ((ImWord) object).getPreviousWord();
+						if (prevWord != null)
+							this.subjectAttributesChanged.add(prevWord);
+					}
+				}
+			}
 		}
 		public void supplementChanged(String supplementId, ImSupplement oldValue) { /* no error checks on supplements for now */ }
 		public void typeChanged(ImObject object, String oldType) {
@@ -2648,15 +2796,46 @@ public class ImageDocumentErrorManager extends AbstractGoldenGateImaginePlugin i
 			ImPage page = this.subject.getPage(subject.pageId);
 			ImRegion[] regions;
 			ArrayList cRegions = new ArrayList();
+			if (subject.getPage() != null)
+				cRegions.add(subject.getPage()); // always add page
+			else cRegions.add(subject.getDocument().getPage(subject.pageId));
 			regions = page.getRegionsIncluding(subject.bounds, false);
 			for (int r = 0; r < regions.length; r++) {
 				if (idecl.subjects.contains(regions[r].getType()))
 					cRegions.add(regions[r]);
+				else if (WORD_ANNOTATION_TYPE.equals(subject.getType())) {
+					if (COLUMN_ANNOTATION_TYPE.equals(regions[r].getType()))
+						cRegions.add(regions[r]);
+					else if (BLOCK_ANNOTATION_TYPE.equals(regions[r].getType()))
+						cRegions.add(regions[r]);
+					else if (PARAGRAPH_TYPE.equals(regions[r].getType()))
+						cRegions.add(regions[r]);
+				}
+				else if (PARAGRAPH_TYPE.equals(subject.getType())) {
+					if (COLUMN_ANNOTATION_TYPE.equals(regions[r].getType()))
+						cRegions.add(regions[r]);
+					else if (BLOCK_ANNOTATION_TYPE.equals(regions[r].getType()))
+						cRegions.add(regions[r]);
+				}
+				else if (BLOCK_ANNOTATION_TYPE.equals(subject.getType())) {
+					if (COLUMN_ANNOTATION_TYPE.equals(regions[r].getType()))
+						cRegions.add(regions[r]);
+				}
 			}
 			regions = page.getRegionsInside(subject.bounds, false);
 			for (int r = 0; r < regions.length; r++) {
 				if (idecl.subjects.contains(regions[r].getType()))
 					cRegions.add(regions[r]);
+				else if (BLOCK_ANNOTATION_TYPE.equals(subject.getType())) {
+					if (PARAGRAPH_TYPE.equals(regions[r].getType()))
+						cRegions.add(regions[r]);
+				}
+				else if (COLUMN_ANNOTATION_TYPE.equals(subject.getType())) {
+					if (PARAGRAPH_TYPE.equals(regions[r].getType()))
+						cRegions.add(regions[r]);
+					else if (BLOCK_ANNOTATION_TYPE.equals(regions[r].getType()))
+						cRegions.add(regions[r]);
+				}
 			}
 			if (cRegions.isEmpty())
 				return null;
