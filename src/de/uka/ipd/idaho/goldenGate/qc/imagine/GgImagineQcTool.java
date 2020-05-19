@@ -107,10 +107,6 @@ public class GgImagineQcTool implements GoldenGateImagineConstants, LiteratureCo
 	private static final String BASE_PATH_PARAMETER = "PATH";
 	private static final String CONFIG_PATH_PARAMETER = "CONF";
 	private static final String CACHE_PATH_PARAMETER = "CACHE";
-//	private static final String DATA_PARAMETER = "DATA";
-//	private static final String HOST_PARAMETER = "HOST";
-//	private static final String PORT_PARAMETER = "PORT";
-//	private static final String AUTHENTICATION_PARAMETER = "AUTH";
 	
 	private static final String HELP_PARAMETER = "HELP";
 	
@@ -1047,8 +1043,12 @@ public class GgImagineQcTool implements GoldenGateImagineConstants, LiteratureCo
 				
 				//	this one's done, remove document
 				if ((idep == null) || (idep.getErrorCount() == 0)) {
+					int selected = this.getSelectedIndex();
 					this.docList.remove(docData);
 					this.refreshDocumentList();
+					if (selected == this.getVisibleDocumentCount())
+						selected--;
+					this.setSelectedDocument(selected);
 				}
 				
 				//	update numbers and side error protocol

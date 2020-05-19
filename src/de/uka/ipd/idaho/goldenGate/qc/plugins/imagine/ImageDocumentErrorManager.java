@@ -160,9 +160,6 @@ public class ImageDocumentErrorManager extends AbstractGoldenGateImaginePlugin i
 			this.idep = idep;
 			this.source = source;
 		}
-//		public String getId() {
-//			return ImDocumentErrorProtocol.errorProtocolSupplementName;
-//		}
 		public InputStream getInputStream() throws IOException {
 			
 			//	clear any cached input
@@ -209,7 +206,7 @@ public class ImageDocumentErrorManager extends AbstractGoldenGateImaginePlugin i
 				if (value == null)
 					return ("" + this.idep.modCount);
 				else try {
-					return this.idep.resetToModCount(Integer.parseInt(value.toString()));
+					return ("" + this.idep.resetToModCount(Integer.parseInt(value.toString())));
 				}
 				catch (NumberFormatException nfe) {
 					return ("" + this.idep.modCount);
@@ -255,8 +252,20 @@ public class ImageDocumentErrorManager extends AbstractGoldenGateImaginePlugin i
 		public Attributed findErrorSubject(Attributed doc, String[] data) {
 			return null;
 		}
-		public void addError(String source, Attributed subject, Attributed parent, String category, String type, String description, String severity) {}
+		public void addError(String source, Attributed subject, Attributed parent, String category, String type, String description, String severity, boolean falsePositive) {}
 		public void removeError(DocumentError error) {}
+		public boolean isFalsePositive(DocumentError error) {
+			return false;
+		}
+		public boolean markFalsePositive(DocumentError error) {
+			return false;
+		}
+		public boolean unmarkFalsePositive(DocumentError error) {
+			return false;
+		}
+		public DocumentError[] getFalsePositives() {
+			return null;
+		}
 		public Comparator getErrorComparator() {
 			return null;
 		}
@@ -990,11 +999,11 @@ public class ImageDocumentErrorManager extends AbstractGoldenGateImaginePlugin i
 		}
 		private String buildAnnotationLabel(Annotation annot) {
 			if (annot.size() < 8)
-				return annot.getValue();
+				return TokenSequenceUtils.concatTokens(annot, false, true);
 			StringBuffer value = new StringBuffer();
-			value.append(TokenSequenceUtils.concatTokens(annot, 0, 3));
+			value.append(TokenSequenceUtils.concatTokens(annot, 0, 3, false, true));
 			value.append(" ... ");
-			value.append(TokenSequenceUtils.concatTokens(annot, (annot.size() - 3), 3));
+			value.append(TokenSequenceUtils.concatTokens(annot, (annot.size() - 3), 3, false, true));
 			return value.toString();
 		}
 	}
@@ -1140,6 +1149,10 @@ public class ImageDocumentErrorManager extends AbstractGoldenGateImaginePlugin i
 		//	TODO add another button for custom configured likely actions
 		//	TODO create such mapping from error source (TODO establish that) to actions in the first place
 		//	TODO in the long haul, maybe even link errors to default actions (via source) and provide respective 'Correct' button
+		
+		//	TODO facilitate group (not range selection mass !!!) false positive removal of errors ...
+		//	TODO ... in dedicated scope (e.g. text stream errors within a block) ...
+		//	TODO ... and configure said scope in individual QC rules (no scope disables group removal)
 		
 		private JButton removeAllButton = new JButton("<HTML>Remove All</HTML>");
 		private JButton reCheckButton = new JButton("<HTML>Re-Check</HTML>");
@@ -1578,6 +1591,25 @@ public class ImageDocumentErrorManager extends AbstractGoldenGateImaginePlugin i
 				this.documentPanel.setAnnotationsPainted(error.subjectType, true);
 			else if ("region".equals(error.subjectClass))
 				this.documentPanel.setRegionsPainted(error.subjectType, true);
+			
+			//	get source error check and highlight all types involved
+			ImDocumentErrorCheck idec = ((ImDocumentErrorCheck) errorChecksBySourceId.get(error.source));
+			if (idec == null)
+				return;
+			for (Iterator stit = idec.subjects.iterator(); stit.hasNext();) {
+				String subjectType = ((String) stit.next());
+				if (ERROR_CHECK_LEVEL_PAGE.equals(idec.level))
+					this.documentPanel.setRegionsPainted(subjectType, true);
+				else if (ERROR_CHECK_LEVEL_STREAM.equals(idec.level))
+					this.documentPanel.setAnnotationsPainted(subjectType, true);
+			}
+			for (Iterator ttit = idec.targets.iterator(); ttit.hasNext();) {
+				String targetType = ((String) ttit.next());
+				if (ERROR_CHECK_LEVEL_PAGE.equals(idec.level))
+					this.documentPanel.setRegionsPainted(targetType, true);
+				else if (ERROR_CHECK_LEVEL_STREAM.equals(idec.level))
+					this.documentPanel.setAnnotationsPainted(targetType, true);
+			}
 		}
 
 		public boolean isActive() {
@@ -2394,6 +2426,34 @@ public class ImageDocumentErrorManager extends AbstractGoldenGateImaginePlugin i
 				return;
 			}
 			
+			/* TODO Make sure error re-checking is more localized:
+- when getting context region or annotation, add all ancestors (not only error check targets)
+- group re-check subjects by outmost context objects (localId property from previous  mail should help here) ...
+- ... and run re-checks by these groups ...
+- ... moving scope inward as far as possible in each group
+  ==> way  less effort on simple edits
+  ==> use RecheckScope object for this ...
+  ==> ... providing getScope() method for zooming in
+- switch to whole document only if major portions of it affected (>50% ???, maybe even more)
+==> maybe parallelize re-checks on individual contexts ...
+==> ... synchronizing addition of errors on protocol
+- for text stream re-checks, maybe use logical paragraphs as artificial (distached) context annotations ...
+  ==> helps localizing re-check context even for cross-block and cross-page word relation edits
+
+Speed up re-checks on physical paragraph splits:
+- scope re-check to parent block ...
+- ... maybe extending to continued and continuing blocks in other columns or pages (based upon word relations)
+
+Speed up re-checks on cross-page and cross-column paragraph mergers (or splits)
+- scope re-check as above
+
+Implementation:
+- catch paragraphs in region edits
+- handle words separately in scope computation
+- in both cases, add blocks even though rarely in error check queries ...
+- ... and use temporary annotation for re-checking
+			 */
+			
 			//	re-check regions
 			if (ImRegion.class.equals(subjectClass)) {
 				
@@ -2948,13 +3008,13 @@ public class ImageDocumentErrorManager extends AbstractGoldenGateImaginePlugin i
 			errorMetadataKeeper.setErrorTypeDescription(category, type, description);
 		}
 		
-		public void addError(String source, Attributed subject, Attributed parent, String category, String type, String description, String severity) {
+		public void addError(String source, Attributed subject, Attributed parent, String category, String type, String description, String severity, boolean falsePositive) {
 			
 			//	make sure we have the error category and type around
 			this.copyErrorTypeMetadata(errorMetadataKeeper, category, type, false);
 			
 			//	add the error
-			super.addError(source, subject, parent, category, type, description, severity);
+			super.addError(source, subject, parent, category, type, description, severity, falsePositive);
 		}
 		
 		//	helper class for restoring protocol on UNDO

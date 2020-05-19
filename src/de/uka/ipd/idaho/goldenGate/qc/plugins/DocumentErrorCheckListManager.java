@@ -151,8 +151,20 @@ public class DocumentErrorCheckListManager extends AbstractResourceManager {
 		public Attributed findErrorSubject(Attributed doc, String[] data) {
 			return null;
 		}
-		public void addError(String source, Attributed subject, Attributed parent, String category, String type, String description, String severity) {}
+		public void addError(String source, Attributed subject, Attributed parent, String category, String type, String description, String severity, boolean falsePositive) {}
 		public void removeError(DocumentError error) {}
+		public boolean isFalsePositive(DocumentError error) {
+			return false;
+		}
+		public boolean markFalsePositive(DocumentError error) {
+			return false;
+		}
+		public boolean unmarkFalsePositive(DocumentError error) {
+			return false;
+		}
+		public DocumentError[] getFalsePositives() {
+			return null;
+		}
 		public Comparator getErrorComparator() {
 			return null;
 		}
@@ -276,6 +288,13 @@ public class DocumentErrorCheckListManager extends AbstractResourceManager {
 		mi.addActionListener(new ActionListener() {
 			public void actionPerformed(ActionEvent ae) {
 				editErrorCheckLists();
+			}
+		});
+		collector.add(mi);
+		mi = new JMenuItem("Print");
+		mi.addActionListener(new ActionListener() {
+			public void actionPerformed(ActionEvent ae) {
+				printErrorCheckLists();
 			}
 		});
 		collector.add(mi);
@@ -681,6 +700,16 @@ public class DocumentErrorCheckListManager extends AbstractResourceManager {
 				String eclName = resourceNameList.getSelectedName();
 				if (deleteResource(eclName))
 					resourceNameList.refresh();
+			}
+		});
+		editButtons.add(button);
+		
+		button = new JButton("Print");
+		button.setBorder(BorderFactory.createRaisedBevelBorder());
+		button.setPreferredSize(new Dimension(80, 21));
+		button.addActionListener(new ActionListener() {
+			public void actionPerformed(ActionEvent ae) {
+				printErrorCheckLists();
 			}
 		});
 		editButtons.add(button);
@@ -1482,5 +1511,21 @@ public class DocumentErrorCheckListManager extends AbstractResourceManager {
 	
 	private static String buildErrorDescription(String description, String annotLabel) {
 		return description.replaceAll("\\$value", ("'" + annotLabel + "'"));
+	}
+	
+	private void printErrorCheckLists() {
+		String[] eclNames = this.getResourceNames();
+		for (int n = 0; n < eclNames.length; n++) {
+			ErrorCheckList ecl = this.getErrorCheckList(eclNames[n]);
+			System.out.println(eclNames[n] + "\t" + ecl.label + "\t" + ecl.description);
+			System.out.println(" + " + ecl.category + "\t" + ecl.categoryLabel + "\t" + ecl.categoryDescription);
+			ErrorType[] ets = ecl.getErrorTypes();
+			for (int t = 0; t < ets.length; t++) {
+				System.out.println(" |  + " + ets[t].name + "\t" + ets[t].label + "\t" + ets[t].description);
+				ErrorCheck[] ecs = ets[t].getErrorChecks();
+				for (int c = 0; c < ecs.length; c++)
+					System.out.println(" |  |  + " + ecs[c].severity + "\t" + ecs[c].description + "\t" + GPath.normalizePath(ecs[c].test));
+			}
+		}
 	}
 }
