@@ -44,9 +44,17 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
+import java.util.Map;
 import java.util.TreeMap;
+import java.util.TreeSet;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import javax.swing.BorderFactory;
 import javax.swing.DefaultListModel;
@@ -74,7 +82,10 @@ import javax.swing.text.JTextComponent;
 import de.uka.ipd.idaho.gamta.Annotation;
 import de.uka.ipd.idaho.gamta.Attributed;
 import de.uka.ipd.idaho.gamta.QueriableAnnotation;
+import de.uka.ipd.idaho.gamta.Token;
 import de.uka.ipd.idaho.gamta.util.CountingSet;
+import de.uka.ipd.idaho.gamta.util.DocumentErrorChecker;
+import de.uka.ipd.idaho.gamta.util.DocumentErrorChecker.MetaErrorChecker;
 import de.uka.ipd.idaho.gamta.util.DocumentErrorProtocol;
 import de.uka.ipd.idaho.gamta.util.DocumentErrorProtocol.DocumentError;
 import de.uka.ipd.idaho.gamta.util.gPath.GPath;
@@ -85,6 +96,7 @@ import de.uka.ipd.idaho.gamta.util.swing.AnnotationDisplayDialog;
 import de.uka.ipd.idaho.gamta.util.swing.DialogFactory;
 import de.uka.ipd.idaho.goldenGate.plugins.AbstractResourceManager;
 import de.uka.ipd.idaho.goldenGate.plugins.GoldenGatePlugin;
+import de.uka.ipd.idaho.goldenGate.plugins.ResourceManager.PreLoadingResourceManager;
 import de.uka.ipd.idaho.goldenGate.qc.DocumentErrorManager;
 import de.uka.ipd.idaho.goldenGate.util.DataListListener;
 import de.uka.ipd.idaho.goldenGate.util.DialogPanel;
@@ -102,7 +114,7 @@ import de.uka.ipd.idaho.htmlXmlUtil.grammars.StandardGrammar;
  * 
  * @author sautter
  */
-public class DocumentErrorCheckListManager extends AbstractResourceManager {
+public class DocumentErrorCheckListManager extends AbstractResourceManager implements PreLoadingResourceManager {
 	private static final String FILE_EXTENSION = ".errorCheckList";
 	
 	private static final String ERROR_CHECK_LEVEL_PAGE = "page";
@@ -177,6 +189,18 @@ public class DocumentErrorCheckListManager extends AbstractResourceManager {
 		return "Document Error CheckList Manager";
 	}
 	
+	/* (non-Javadoc)
+	 * @see de.uka.ipd.idaho.goldenGate.plugins.ResourceManager.PreLoadingResourceManager#preLoadResources()
+	 */
+	public void preLoadResources() {
+		String[] eclNames = this.getResourceNames();
+		for (int l = 0; l < eclNames.length; l++) {
+			DocumentErrorChecker dec = this.getErrorChecker(eclNames[l], null);
+			if (dec != null)
+				DocumentErrorChecker.registerErrorChecker(dec);
+		}
+	}
+	
 	private void ensureErrorMetadataLoaded() {
 		if (this.errorMetadataLoaded)
 			return;
@@ -210,20 +234,21 @@ public class DocumentErrorCheckListManager extends AbstractResourceManager {
 			}
 		}
 		
-		//	finally, load error categories and types from own check lists
-		String[] eclNames = this.getResourceNames();
-		for (int n = 0; n < eclNames.length; n++) {
-			ErrorCheckList ecl = this.getErrorCheckList(eclNames[n]);
-			if (ecl == null)
+		//	finally, load error categories and types existing error checkers
+		String[] categories = DocumentErrorChecker.getRegisteredErrorCategories();
+		for (int c = 0; c < categories.length; c++) {
+			String cLabel = DocumentErrorChecker.getRegisteredErrorCategoryLabel(categories[c]);
+			String cDescription = DocumentErrorChecker.getRegisteredErrorCategoryDescription(categories[c]);
+			if ((cLabel != null) && (cDescription != null))
+				this.errorMetadataKeeper.addErrorCategory(categories[c], cLabel, cDescription);
+			String[] types = DocumentErrorChecker.getRegisteredErrorTypes(categories[c]);
+			if (types == null)
 				continue;
-			if (ecl.category == null)
-				continue;
-			if ((ecl.categoryLabel != null) && (ecl.categoryDescription != null))
-				this.errorMetadataKeeper.addErrorCategory(ecl.category, ecl.categoryLabel, ecl.categoryDescription);
-			ErrorType[] types = ecl.getErrorTypes();
 			for (int t = 0; t < types.length; t++) {
-				if ((types[t].name != null) && (types[t].label != null) && (types[t].description != null))
-					this.errorMetadataKeeper.addErrorType(ecl.category, types[t].name, types[t].label, types[t].description);
+				String tLabel = DocumentErrorChecker.getRegisteredErrorTypeLabel(categories[c], types[t]);
+				String tDescription = DocumentErrorChecker.getRegisteredErrorTypeDescription(categories[c], types[t]);
+				if ((tLabel != null) && (tDescription != null))
+					this.errorMetadataKeeper.addErrorType(categories[c], types[t], tLabel, tDescription);
 			}
 		}
 		
@@ -327,7 +352,6 @@ public class DocumentErrorCheckListManager extends AbstractResourceManager {
 		
 		/** apply the error check list by default? */
 		public final boolean applyByDefault;
-		
 		
 		/** the category of errors the checks in this list look for */
 		public final String category;
@@ -486,7 +510,7 @@ public class DocumentErrorCheckListManager extends AbstractResourceManager {
 		public final String description;
 		
 		/** the XPath to use for error checking, as originally entered */
-		public String test;
+		String test;
 		
 		ErrorCheck(String level, String severity, String description, String test) {
 			this.level = level;
@@ -505,13 +529,376 @@ public class DocumentErrorCheckListManager extends AbstractResourceManager {
 			bw.write("</errorCheck>");
 			bw.newLine();
 		}
-
+		
 		/**
 		 * Retrieve the XPath test of the error check as a string.
 		 * @return the XPath test
 		 */
 		public String getTest() {
 			return this.test;
+		}
+	}
+	
+	private Map errorCheckerCache = Collections.synchronizedMap(new HashMap());
+	private DocumentErrorChecker getErrorChecker(String eclName, ErrorCheckList ecl) {
+		GPathErrorCheckList gpEcl = ((GPathErrorCheckList) this.errorCheckerCache.get(eclName));
+		if (gpEcl != null)
+			return gpEcl;
+		if (ecl == null)
+			ecl = this.loadErrorCheckList(eclName);
+		if (ecl == null)
+			return null;
+		gpEcl = new GPathErrorCheckList(eclName, ecl);
+		this.errorCheckerCache.put(eclName, gpEcl);
+		return gpEcl;
+	}
+	
+	/**
+	 * An error check list, consisting of one or more error checks organized by
+	 * error types, belonging to the same error category.
+	 * 
+	 * @author sautter
+	 */
+	public static class GPathErrorCheckList extends DocumentErrorChecker implements MetaErrorChecker {
+		private static final Pattern pathStepPattern = Pattern.compile("[a-z\\-]+\\:\\:([a-zA-Z0-9][a-zA-Z0-9\\_\\-]*\\:)?[a-zA-Z0-9][a-zA-Z0-9\\_\\-]*");
+		
+		private ErrorCheckList checkList;
+		private ArrayList errorChecks = new ArrayList();
+		GPathErrorCheckList(String name, ErrorCheckList checkList) {
+			super(name, checkList.label, checkList.description);
+			this.checkList = checkList;
+			ErrorType[] errorTypes = this.checkList.getErrorTypes();
+			for (int t = 0; t < errorTypes.length; t++) {
+				ErrorCheck[] errorChecks = errorTypes[t].getErrorChecks();
+				for (int c = 0; c < errorChecks.length; c++) {
+					if (errorChecks[c].test == null)
+						continue;
+					GPath ecCheckPath;
+					try {
+						ecCheckPath = GPathParser.parsePath(errorChecks[c].test);
+					}
+					catch (GPathException gpe) {
+						System.out.println("Error in check " + errorChecks[c].description + ": " + gpe.getMessage());
+						System.out.println("  test is " + errorChecks[c].test);
+						continue;
+					}
+					String ecTestString = ecCheckPath.toString();
+					String ecName = (this.name + ecTestString.hashCode());
+					boolean ecIsReferentialOrUsesParent;
+					System.out.println("Analyzing GPath test " + ecTestString);
+					
+					//	figure out if referential test
+					int predicateStart = ecTestString.indexOf("[");
+					int lastRootPathStart = ecTestString.lastIndexOf("descendant-or-self::annotation()/");
+					ecIsReferentialOrUsesParent = (
+							((predicateStart != -1) && (predicateStart < lastRootPathStart)) // path from document down has to be in predicate
+							||
+							((ecTestString.indexOf("parent::") != -1) || (ecTestString.indexOf("ancestor::") != -1))
+						);
+					System.out.println(" - referential/parent test is " + ecIsReferentialOrUsesParent);
+					
+					//	extract target types and attributes
+					HashSet ecTargetTypes = new HashSet();
+					for (Matcher targets = pathStepPattern.matcher(ecTestString); targets.find();) {
+						String ecTarget = targets.group();
+						System.out.println(" - " + ecTarget);
+						if (ecTarget.startsWith("attribute::")) {
+							String attribute = ecTarget.substring(ecTarget.indexOf("::") + "::".length());
+							ecTargetTypes.add("@" + attribute);
+						}
+						else if (ecTarget.startsWith("token::"))
+							ecTargetTypes.add(Token.TOKEN_ANNOTATION_TYPE);
+						else if (ecTarget.endsWith("::annotation")) {}
+						else {
+							String targetType = ecTarget.substring(ecTarget.indexOf("::") + "::".length());
+							ecTargetTypes.add(targetType);
+						}
+					}
+					System.out.println(" ==> targets: " + ecTargetTypes);
+					
+					//	remove predicates
+					int ecTestLength;
+					do {
+						System.out.println(" - removing predicates: " + ecTestString);
+						ecTestLength = ecTestString.length();
+						int singleQuoteOffset = ecTestString.indexOf("'");
+						int doubleQuoteOffset = ecTestString.indexOf("\"");
+						if ((singleQuoteOffset == -1) && (doubleQuoteOffset == -1)) {
+							System.out.println("   - removing predicates");
+							ecTestString = ecTestString.replaceAll("\\[[^\\[\\]]+\\]", "");
+						}
+						else if ((singleQuoteOffset == -1) || ((doubleQuoteOffset != -1) && (doubleQuoteOffset < singleQuoteOffset))) {
+							System.out.println("   - removing double quoted strings");
+							ecTestString = ecTestString.replaceAll("\\\"[^\\\"]+\\\"", "");
+						}
+						else if ((doubleQuoteOffset == -1) || ((singleQuoteOffset != -1) && (singleQuoteOffset < doubleQuoteOffset))) {
+							System.out.println("   - removing single quoted strings");
+							ecTestString = ecTestString.replaceAll("\\'[^\\']+\\'", "");
+						}
+					}
+					while (ecTestString.length() < ecTestLength);
+					
+					//	extract subject types
+					HashSet ecSubjectTypes = new HashSet();
+					for (Matcher subjects = pathStepPattern.matcher(ecTestString); subjects.find();) {
+						String ecSubject = subjects.group();
+						System.out.println(" - " + ecSubject);
+						if (ecSubject.startsWith("token::"))
+							ecSubjectTypes.add(Token.TOKEN_ANNOTATION_TYPE);
+						else if (ecSubject.endsWith("::annotation")) { /* no use holding on to wildcards */ }
+						else if (ecSubject.startsWith("attribute::")) { /* no way of returning attributes as error subjects */ }
+						else {
+							String subjectType = ecSubject.substring(ecSubject.indexOf("::") + "::".length());
+							ecSubjectTypes.add(subjectType);
+						}
+					}
+					System.out.println(" ==> subjects: " + ecSubjectTypes);
+					this.errorChecks.add(new GPathErrorChecker(ecName, this, errorTypes[t], errorChecks[c], ecTargetTypes, ecSubjectTypes, ecCheckPath, ecIsReferentialOrUsesParent));
+				}
+			}
+		}
+		
+		public String[] getErrorCategories() {
+			String[] ecs = {this.checkList.category};
+			return ecs;
+		}
+		public String getErrorCategoryLabel(String category) {
+			if (this.mismatchOnCategory(category))
+				return null;
+			return this.checkList.categoryLabel;
+		}
+		public String getErrorCategoryDescription(String category) {
+			if (this.mismatchOnCategory(category))
+				return null;
+			return this.checkList.categoryDescription;
+		}
+		public String[] getErrorTypes(String category) {
+			if (this.mismatchOnCategory(category))
+				return new String[0];
+			return this.checkList.getErrorTypeNames();
+		}
+		public String getErrorTypeLabel(String category, String type) {
+			if (this.mismatchOnCategory(category))
+				return null;
+			ErrorType et = this.checkList.getErrorType(type);
+			return ((et == null) ? null : et.label);
+		}
+		public String getErrorTypeDescription(String category, String type) {
+			if (this.mismatchOnCategory(category))
+				return null;
+			ErrorType et = this.checkList.getErrorType(type);
+			return ((et == null) ? null : et.description);
+		}
+		public String[] getObservedTargets(String category, String type) {
+			if (this.mismatchOnCategory(category))
+				return new String[0];
+			TreeSet targetTypes = new TreeSet();
+			for (int c = 0; c < this.errorChecks.size(); c++) {
+				GPathErrorChecker gec = ((GPathErrorChecker) this.errorChecks.get(c));
+				if (gec.mismatchOnType(type))
+					continue;
+				targetTypes.addAll(gec.targetTypes);
+			}
+			return ((String[]) targetTypes.toArray(new String[targetTypes.size()]));
+		}
+		public String[] getCheckedSubjects(String category, String type) {
+			if (this.mismatchOnCategory(category))
+				return new String[0];
+			TreeSet subjectTypes = new TreeSet();
+			for (int c = 0; c < this.errorChecks.size(); c++) {
+				GPathErrorChecker gec = ((GPathErrorChecker) this.errorChecks.get(c));
+				if (gec.mismatchOnType(type))
+					continue;
+				subjectTypes.addAll(gec.subjectTypes);
+			}
+			return ((String[]) subjectTypes.toArray(new String[subjectTypes.size()]));
+		}
+		public boolean requiresTopLevelDocument(String category, String type) {
+			if (this.mismatchOnCategory(category))
+				return false;
+			for (int c = 0; c < this.errorChecks.size(); c++) {
+				GPathErrorChecker gec = ((GPathErrorChecker) this.errorChecks.get(c));
+				if (gec.mismatchOnType(type))
+					continue;
+				if (gec.isReferentialOrParentCheck)
+					return true;
+			}
+			return false;
+		}
+		public String getCheckLevel(String category, String type) {
+			if (this.mismatchOnCategory(category))
+				return null;
+			int lcc = 0;
+			int scc = 0;
+			for (int c = 0; c < this.errorChecks.size(); c++) {
+				GPathErrorChecker gec = ((GPathErrorChecker) this.errorChecks.get(c));
+				if (gec.mismatchOnType(type))
+					continue;
+				if (ERROR_CHECK_LEVEL_PAGE.equals(gec.check.level))
+					lcc++;
+				else if (ERROR_CHECK_LEVEL_STREAM.equals(gec.check.level))
+					scc++;
+			}
+			if ((lcc == 0) && (scc == 0))
+				return null;
+			else if (lcc == 0)
+				return CHECK_LEVEL_SEMANTICS;
+			else if (scc == 0)
+				return CHECK_LEVEL_LAYOUT;
+			else return CHECK_LEVEL_MIXED;
+		}
+		public boolean isDefaultErrorChecker() {
+			return this.checkList.applyByDefault;
+		}
+		public DocumentErrorMetadata[] getErrorMetadata(String category, String type) {
+			if (this.mismatchOnCategory(category))
+				return null;
+			ArrayList dems = new ArrayList();
+			for (int c = 0; c < this.errorChecks.size(); c++) {
+				GPathErrorChecker gec = ((GPathErrorChecker) this.errorChecks.get(c));
+				if (gec.mismatchOnType(type))
+					continue;
+				DocumentErrorMetadata[] dem = gec.getErrorMetadata(category, type);
+				if ((dem != null) && (dem.length != 0))
+					dems.addAll(Arrays.asList(dem));
+			}
+			return ((DocumentErrorMetadata[]) dems.toArray(new DocumentErrorMetadata[dems.size()]));
+		}
+		public int addDocumentErrors(QueriableAnnotation doc, DocumentErrorProtocol dep, String category, String type) {
+			if (this.mismatchOnCategory(category))
+				return 0;
+			int errors = 0;
+			for (int c = 0; c < this.errorChecks.size(); c++) {
+				GPathErrorChecker gec = ((GPathErrorChecker) this.errorChecks.get(c));
+				if (gec.mismatchOnType(type))
+					continue;
+				errors += gec.addDocumentErrors(doc, dep);
+			}
+			return errors;
+		}
+		
+		public DocumentErrorChecker[] getErrorCheckers(String category, String type) {
+			if (this.mismatchOnCategory(category))
+				return new DocumentErrorChecker[0];
+			if (type == null)
+				return ((DocumentErrorChecker[]) this.errorChecks.toArray(new DocumentErrorChecker[this.errorChecks.size()]));
+			ArrayList errorChecks = new ArrayList();
+			for (int c = 0; c < this.errorChecks.size(); c++) {
+				if (type.equals(((GPathErrorChecker) this.errorChecks.get(c)).type))
+					errorChecks.add(this.errorChecks.get(c));
+			}
+			return ((DocumentErrorChecker[]) errorChecks.toArray(new DocumentErrorChecker[errorChecks.size()]));
+		}
+		
+		boolean mismatchOnCategory(String category) {
+			return ((category != null) && !this.checkList.category.equals(category));
+		}
+		
+		private static class GPathErrorChecker extends DocumentErrorChecker {
+			final GPathErrorCheckList parent;
+			final ErrorType type;
+			final ErrorCheck check;
+			final HashSet targetTypes = new HashSet();
+			final HashSet subjectTypes = new HashSet();
+			final GPath checkPath;
+			final boolean isReferentialOrParentCheck;
+			GPathErrorChecker(String name, GPathErrorCheckList parent, ErrorType type, ErrorCheck check, HashSet targetTypes, HashSet subjectTypes, GPath checkPath, boolean isReferentialOrParentCheck) {
+				super(name);
+				this.parent = parent;
+				this.type = type;
+				this.check = check;
+				this.targetTypes.addAll(targetTypes);
+				this.subjectTypes.addAll(subjectTypes);
+				this.checkPath = checkPath;
+				this.isReferentialOrParentCheck = isReferentialOrParentCheck;
+			}
+			
+			public String[] getErrorCategories() {
+				return this.parent.getErrorCategories();
+			}
+			public String getErrorCategoryLabel(String category) {
+				if (this.parent.mismatchOnCategory(category))
+					return null;
+				return this.parent.checkList.categoryLabel;
+			}
+			public String getErrorCategoryDescription(String category) {
+				if (this.parent.mismatchOnCategory(category))
+					return null;
+				return this.parent.checkList.categoryDescription;
+			}
+			public String[] getErrorTypes(String category) {
+				if (this.parent.mismatchOnCategory(category))
+					return new String[0];
+				String[] ets = {this.type.name};
+				return ets;
+			}
+			public String getErrorTypeLabel(String category, String type) {
+				if (this.mismatchOnCategoryOrType(category, type))
+					return null;
+				return this.type.label;
+			}
+			public String getErrorTypeDescription(String category, String type) {
+				if (this.mismatchOnCategoryOrType(category, type))
+					return null;
+				return this.type.description;
+			}
+			boolean mismatchOnType(String type) {
+				return ((type != null) && !this.type.name.equals(type));
+			}
+			private boolean mismatchOnCategoryOrType(String category, String type) {
+				if (this.parent.mismatchOnCategory(category))
+					return true;
+				else if (this.mismatchOnType(type))
+					return true;
+				else return false;
+			}
+			public String[] getObservedTargets(String category, String type) {
+				if (this.mismatchOnCategoryOrType(category, type))
+					return new String[0];
+				else return ((String[]) this.targetTypes.toArray(new String[this.targetTypes.size()]));
+			}
+			public String[] getCheckedSubjects(String category, String type) {
+				if (this.mismatchOnCategoryOrType(category, type))
+					return new String[0];
+				else return ((String[]) this.subjectTypes.toArray(new String[this.subjectTypes.size()]));
+			}
+			public boolean requiresTopLevelDocument(String category, String type) {
+				if (this.mismatchOnCategoryOrType(category, type))
+					return false;
+				return this.isReferentialOrParentCheck;
+			}
+			public String getCheckLevel(String category, String type) {
+				if (this.mismatchOnCategoryOrType(category, type))
+					return null;
+				return (ERROR_CHECK_LEVEL_PAGE.equals(this.check.level) ? CHECK_LEVEL_LAYOUT : CHECK_LEVEL_SEMANTICS);
+			}
+			public boolean isDefaultErrorChecker() {
+				return this.parent.isDefaultErrorChecker();
+			}
+			public DocumentErrorMetadata[] getErrorMetadata(String category, String type) {
+				if (this.mismatchOnCategoryOrType(category, type))
+					return null;
+				DocumentErrorMetadata[] dems = {
+					new DocumentErrorMetadata(this.name, this.parent.checkList.category, this.parent.checkList.categoryLabel, this.type.name, this.type.label, this.check.severity, this.check.description)
+				};
+				return dems;
+			}
+			public int addDocumentErrors(QueriableAnnotation doc, DocumentErrorProtocol dep, String category, String type) {
+				if (this.mismatchOnCategoryOrType(category, type))
+					return 0;
+				return this.addDocumentErrors(doc, dep);
+			}
+			int addDocumentErrors(QueriableAnnotation doc, DocumentErrorProtocol dep) {
+				QueriableAnnotation[] errors = GPath.evaluatePath(doc, this.checkPath, null);
+				for (int e = 0; e < errors.length; e++) {
+					System.out.println("   - found " + errors[e].getType());
+					dep.addError(this.name, errors[e], doc, this.parent.checkList.category, this.type.name, this.getErrorDescription(errors[e]), this.check.severity);
+				}
+				return errors.length;
+			}
+			private String getErrorDescription(Annotation annot) {
+				return buildErrorDescription(this.check.description, buildAnnotationLabel(annot, 3));
+			}
 		}
 	}
 	
@@ -603,8 +990,22 @@ public class DocumentErrorCheckListManager extends AbstractResourceManager {
 			ecl.writeXml(bw);
 			bw.flush();
 			bw.close();
+			
+			//	get old error checker and unregister it (if any)
+			DocumentErrorChecker oldDec = ((DocumentErrorChecker) this.errorCheckerCache.remove(eclName));
+			if (oldDec != null)
+				DocumentErrorChecker.unregisterErrorChecker(oldDec);
+			
+			//	get new error checker and register it
+			DocumentErrorChecker newDec = this.getErrorChecker(eclName, ecl);
+			if (newDec != null)
+				DocumentErrorChecker.unregisterErrorChecker(newDec);
+			
+			//	issue general notification (about resource proper, error checker registry does it for the checker)
 			if (this.parent != null)
 				this.parent.notifyResourceUpdated(this.getClass().getName(), eclName);
+			
+			//	indicate success
 			return true;
 		}
 		else return false;
@@ -698,8 +1099,12 @@ public class DocumentErrorCheckListManager extends AbstractResourceManager {
 		button.addActionListener(new ActionListener() {
 			public void actionPerformed(ActionEvent ae) {
 				String eclName = resourceNameList.getSelectedName();
-				if (deleteResource(eclName))
+				if (deleteResource(eclName)) {
+					DocumentErrorChecker oldDec = ((DocumentErrorChecker) errorCheckerCache.remove(eclName));
+					if (oldDec != null)
+						DocumentErrorChecker.unregisterErrorChecker(oldDec);
 					resourceNameList.refresh();
+				}
 			}
 		});
 		editButtons.add(button);
@@ -1509,7 +1914,7 @@ public class DocumentErrorCheckListManager extends AbstractResourceManager {
 		}
 	}
 	
-	private static String buildErrorDescription(String description, String annotLabel) {
+	static String buildErrorDescription(String description, String annotLabel) {
 		return description.replaceAll("\\$value", ("'" + annotLabel + "'"));
 	}
 	

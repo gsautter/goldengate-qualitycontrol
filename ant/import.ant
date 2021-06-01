@@ -23,7 +23,7 @@
 	</target>
 	<target name="fetch-ie" depends="check-fetch-ie" if="${ie.exists}">
     	<copy file="../idaho-extensions/dist/GamtaImagingAPI.jar" todir="${lib.home}" overwrite="true" verbose="false" />
-    	<copy file="../idaho-extensions/dist/GamtaFeedbackAPI.jar" todir="${lib.home}" overwrite="true" verbose="false" />
+    	<!-- copy file="../idaho-extensions/dist/GamtaFeedbackAPI.jar" todir="${lib.home}" overwrite="true" verbose="false" / -->
 	</target>
 	
 	<target name="check-fetch-im" unless="im.exists">

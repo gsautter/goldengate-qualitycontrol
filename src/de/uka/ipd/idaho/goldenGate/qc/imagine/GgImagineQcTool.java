@@ -433,9 +433,6 @@ public class GgImagineQcTool implements GoldenGateImagineConstants, LiteratureCo
 		public boolean allowWebAccess() {
 			return this.config.allowWebAccess();
 		}
-		public String getHelpBaseURL() {
-			return this.config.getHelpBaseURL();
-		}
 		public boolean isDataAvailable(String dataName) {
 			return this.config.isDataAvailable(dataName);
 		}

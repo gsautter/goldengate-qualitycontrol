@@ -22,7 +22,6 @@
 	    <javac destdir="${build.home}/classes" includeantruntime="false" target="1.5" debug="true" debuglevel="lines,vars,source">
 	    	<src path="${src.home}" />
     		<include name="**/goldenGate/qc/**/*.java" />
-	   		<include name="**/goldenGateServer/**/*.java" />
 	        <classpath refid="compile.classpath" />
 	    </javac>
 	</target>

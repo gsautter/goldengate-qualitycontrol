@@ -5,7 +5,7 @@
 -->
 
 <project name="dist">
-	<target name="toolpluginscomponents" depends="qcutilsjar,errorchecklistsjar,docerrorsjar,errorexpjar,ggiqctoolfolderdbjar,ggiqctooljar" />
+	<target name="toolpluginscomponents" depends="qcutilsjar,errorchecklistsjar,docerrorsjar,errorexpjar,textflowcheckerjar,ggiqctoolfolderdbjar,ggiqctooljar" />
 	
 	<target name="check-gge" unless="gge.exists">
 		<condition property="gge.exists">
@@ -76,6 +76,20 @@
 			</fileset>
 			<fileset dir="${src.home}">
 				<include name="**/goldenGate/qc/plugins/imagine/ImageDocumentErrorProtocolExporter.java" />
+			</fileset>
+			<fileset dir="." includes="LICENSE.txt"/>
+		</jar>
+	</target>
+	
+	<target name="textflowcheckerjar" depends="check-ggi" if="${ggi.exists}">
+		<delete file="${jar.ggi.textflowchecker}" />
+		<jar destfile="${jar.ggi.textflowchecker}" manifest="${file.home}/MANIFEST.plugins.MF">
+			<fileset dir="${build.home}/classes">
+				<include name="**/goldenGate/qc/plugins/imagine/TextFlowBreakErrorChecker.class" />
+				<include name="**/goldenGate/qc/plugins/imagine/TextFlowBreakErrorChecker$*.class" />
+			</fileset>
+			<fileset dir="${src.home}">
+				<include name="**/goldenGate/qc/plugins/imagine/TextFlowBreakErrorChecker.java" />
 			</fileset>
 			<fileset dir="." includes="LICENSE.txt"/>
 		</jar>
